@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SiteLog AI — Daily Report</title>
+<meta name="description" content="AI-powered construction daily report">
+<!-- PWA manifest inline -->
+<link rel="manifest" href="data:application/json,{%22name%22:%22SiteLog+AI%22,%22short_name%22:%22SiteLog%22,%22display%22:%22standalone%22,%22background_color%22:%22%230F0F0F%22,%22theme_color%22:%22%23F5C518%22}">
+<meta name="theme-color" content="#F5C518">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+:root{--y:#F5C518;--or:#E8631A;--dk:#0F0F0F;--dk2:#1A1A1A;--dk3:#252525;--dk4:#333;--lt:#F2EDE4;--mu:#888;--gr:#2ECC71;--rd:#E74C3C;--bl:#3498DB;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--dk);color:var(--lt);font-family:'DM Sans',sans-serif;min-height:100vh;}
+
+/* HEADER */
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:var(--dk2);border-bottom:2px solid var(--y);position:sticky;top:0;z-index:200;flex-wrap:wrap;gap:8px;}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:3px;color:var(--y);}
+.logo span{color:var(--lt);}
+.header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.date-badge{background:var(--dk3);border:1px solid var(--dk4);padding:5px 12px;border-radius:4px;font-family:'DM Mono',monospace;font-size:12px;color:var(--mu);}
+.online-badge{padding:4px 10px;border-radius:100px;font-size:11px;font-weight:700;letter-spacing:.5px;}
+.online-badge.online{background:rgba(46,204,113,.15);color:var(--gr);border:1px solid var(--gr);}
+.online-badge.offline{background:rgba(231,76,60,.15);color:var(--rd);border:1px solid var(--rd);}
+.gps-badge{padding:4px 10px;border-radius:100px;font-size:11px;font-weight:600;background:rgba(52,152,219,.12);color:var(--bl);border:1px solid var(--bl);cursor:pointer;}
+
+/* LAYOUT */
+.container{max-width:1100px;margin:0 auto;padding:24px 20px 80px;}
+
+/* SECTION TITLES */
+.sec-title{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:var(--y);margin-bottom:4px;}
+.sec-sub{font-size:12px;color:var(--mu);margin-bottom:16px;}
+
+/* CARDS / PANELS */
+.panel{background:var(--dk2);border:1.5px solid var(--dk3);border-radius:10px;padding:20px;margin-bottom:20px;}
+.panel.yellow-border{border-color:var(--y);}
+
+/* BUTTONS */
+.btn{padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;font-size:13px;transition:all .15s;}
+.btn-y{background:var(--y);color:var(--dk);}
+.btn-y:hover{background:#dba800;transform:translateY(-1px);}
+.btn-y:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.btn-ghost{background:var(--dk3);color:var(--lt);border:1.5px solid var(--dk4);}
+.btn-ghost:hover{border-color:var(--y);}
+.btn-or{background:var(--or);color:#fff;}
+.btn-or:hover{background:#c8541a;}
+.btn-gr{background:transparent;color:var(--gr);border:1.5px solid var(--gr);}
+.btn-gr:hover{background:rgba(46,204,113,.1);}
+.btn-red{background:transparent;color:var(--rd);border:1.5px solid var(--rd);padding:5px 10px;font-size:12px;}
+.btn-red:hover{background:rgba(231,76,60,.1);}
+.btn-sm{padding:6px 12px;font-size:12px;}
+
+/* INPUTS */
+.field-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu);margin-bottom:5px;}
+input[type=text],input[type=email],input[type=number],input[type=date],input[type=password],select,textarea{
+  background:var(--dk3);border:1.5px solid var(--dk4);border-radius:6px;color:var(--lt);
+  font-family:'DM Sans',sans-serif;font-size:13px;padding:9px 12px;outline:none;width:100%;transition:border-color .2s;}
+input:focus,select:focus,textarea:focus{border-color:var(--y);}
+select option{background:var(--dk2);}
+textarea{resize:vertical;}
+
+/* GRID HELPERS */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+@media(max-width:700px){.g2,.g3,.g4{grid-template-columns:1fr 1fr;}.g-solo{grid-template-columns:1fr;}}
+@media(max-width:480px){.g2,.g3,.g4{grid-template-columns:1fr;}}
+
+/* FIELD CARD */
+.fc{background:var(--dk2);border:1.5px solid var(--dk3);border-radius:8px;padding:12px 14px;}
+.fc:focus-within{border-color:var(--y);}
+.fc input,.fc select{background:transparent;border:none;padding:0;font-size:14px;}
+.fc input:focus,.fc select:focus{border:none;outline:none;}
+
+/* WEATHER BUTTONS */
+.weather-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
+.wc{padding:5px 12px;border:1.5px solid var(--dk4);border-radius:100px;background:transparent;color:var(--mu);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+.wc:hover,.wc.active{border-color:var(--y);color:var(--y);background:rgba(245,197,24,.07);}
+
+/* VOICE / NOTES */
+.voice-hero{background:linear-gradient(135deg,#1e1400,#0f0f0f);border:1.5px solid var(--y);border-radius:12px;padding:28px;margin-bottom:20px;position:relative;overflow:hidden;}
+.voice-hero::before{content:'';position:absolute;top:-40px;right:-40px;width:160px;height:160px;background:var(--y);opacity:.04;border-radius:50%;}
+.vt{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:2px;color:var(--y);margin-bottom:4px;}
+.vs{color:var(--mu);font-size:13px;margin-bottom:20px;}
+.voice-area{background:var(--dk3);border:1.5px solid var(--dk4);border-radius:8px;padding:14px;margin-bottom:14px;}
+.voice-area:focus-within{border-color:var(--y);}
+.voice-area textarea{background:transparent;border:none;padding:0;width:100%;min-height:100px;line-height:1.6;font-size:14px;}
+.voice-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.mic-dot{width:7px;height:7px;background:#fff;border-radius:50%;}
+.btn-rec{display:flex;align-items:center;gap:7px;}
+.btn-rec.recording{background:var(--rd);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,.4);}50%{box-shadow:0 0 0 8px rgba(231,76,60,0);}}
+.hint-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;}
+.hc{background:var(--dk3);border:1px solid var(--dk4);padding:4px 10px;border-radius:100px;font-size:11px;color:var(--mu);cursor:pointer;transition:all .15s;}
+.hc:hover{border-color:var(--y);color:var(--y);}
+
+/* LANGUAGE SELECTOR */
+.lang-pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+.lp{padding:5px 14px;border:1.5px solid var(--dk4);border-radius:100px;background:transparent;color:var(--mu);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;transition:all .15s;}
+.lp:hover,.lp.active{border-color:var(--y);color:var(--y);background:rgba(245,197,24,.07);}
+
+/* EQUIPMENT TABLE */
+.eq-row{display:grid;grid-template-columns:80px 1fr 80px 1fr 1fr 1fr 90px 36px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--dk3);}
+.eq-row:last-child{border-bottom:none;}
+.eq-header{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--mu);padding:4px 0 8px;border-bottom:1px solid var(--dk4);}
+.eq-row input,.eq-row select{background:var(--dk3);border:1px solid var(--dk4);padding:7px 9px;border-radius:5px;font-size:12px;}
+.eq-row input:focus,.eq-row select:focus{border-color:var(--y);}
+.idle-time-input{display:flex;align-items:center;gap:4px;}
+.idle-time-input input{width:55px;}
+.idle-time-input span{font-size:11px;color:var(--mu);}
+@media(max-width:900px){.eq-row{grid-template-columns:1fr 1fr;gap:6px;background:var(--dk3);border-radius:8px;padding:10px;margin-bottom:8px;border-bottom:none;}}
+
+/* LABOR TABLE */
+.lb-row{display:grid;grid-template-columns:1fr 1fr 120px 36px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--dk3);}
+.lb-row:last-child{border-bottom:none;}
+.lb-row input,.lb-row select{background:var(--dk3);border:1px solid var(--dk4);padding:7px 9px;border-radius:5px;font-size:12px;}
+.lb-row input:focus,.lb-row select:focus{border-color:var(--y);}
+@media(max-width:600px){.lb-row{grid-template-columns:1fr 1fr;gap:6px;background:var(--dk3);border-radius:8px;padding:10px;margin-bottom:8px;border-bottom:none;}}
+
+/* PHOTO */
+.photo-drop{border:2px dashed var(--dk4);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:16px;}
+.photo-drop:hover,.photo-drop.drag-over{border-color:var(--y);background:rgba(245,197,24,.03);}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;}
+.photo-card{background:var(--dk3);border:1.5px solid var(--dk4);border-radius:8px;overflow:hidden;position:relative;transition:border-color .2s;}
+.photo-card:hover{border-color:var(--y);}
+.photo-card img{width:100%;height:130px;object-fit:cover;display:block;}
+.photo-card-body{padding:8px 10px;}
+.photo-card-body textarea{background:transparent;border:none;padding:0;font-size:11px;min-height:40px;line-height:1.4;}
+.photo-card-foot{display:flex;align-items:center;justify-content:space-between;padding:4px 10px 8px;gap:4px;}
+.photo-cat{font-size:11px;padding:3px 6px;border:1px solid var(--dk4);border-radius:4px;background:transparent;color:var(--mu);}
+.photo-ai-btn{font-size:10px;padding:3px 8px;border:1px solid var(--or);border-radius:100px;background:transparent;color:var(--or);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;}
+.photo-ai-btn:hover{background:rgba(232,99,26,.1);}
+.photo-remove{position:absolute;top:5px;right:5px;width:20px;height:20px;background:rgba(0,0,0,.7);border:none;border-radius:50%;color:#aaa;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.photo-remove:hover{background:var(--rd);color:#fff;}
+.ai-done-badge{position:absolute;top:5px;left:5px;background:var(--or);color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;display:none;}
+.ai-done-badge.show{display:block;}
+
+/* SECTIONS TOGGLE */
+.tog-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;}
+.tog{background:var(--dk2);border:1.5px solid var(--dk3);border-radius:8px;padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:all .15s;font-size:13px;font-weight:500;}
+.tog:hover,.tog.active{border-color:var(--y);}
+.tog.active{background:rgba(245,197,24,.06);}
+.tog-box{width:18px;height:18px;border:2px solid var(--dk4);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;}
+.tog.active .tog-box{background:var(--y);border-color:var(--y);color:var(--dk);}
+.tog-desc{font-size:11px;color:var(--mu);margin-top:1px;}
+
+/* SIGNATURE */
+.sig-area{background:var(--dk3);border:2px solid var(--dk4);border-radius:8px;cursor:crosshair;display:block;touch-action:none;}
+.sig-controls{display:flex;gap:8px;margin-top:8px;align-items:center;}
+.sig-label{font-size:12px;color:var(--mu);margin-bottom:6px;}
+.sig-name-input{background:var(--dk3);border:1px solid var(--dk4);border-radius:5px;padding:6px 10px;font-size:12px;color:var(--lt);font-family:'DM Sans',sans-serif;outline:none;width:100%;margin-bottom:8px;}
+.sig-name-input:focus{border-color:var(--y);}
+
+/* STATUS BAR */
+.status-bar{display:none;align-items:center;gap:10px;padding:11px 16px;background:var(--dk3);border-radius:8px;margin-bottom:16px;font-size:13px;color:var(--mu);}
+.status-bar.show{display:flex;}
+.spinner{width:14px;height:14px;border:2px solid var(--dk4);border-top-color:var(--y);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* REPORT OUTPUT */
+.report-out{background:var(--dk2);border:1.5px solid var(--dk3);border-radius:12px;overflow:hidden;margin-bottom:20px;display:none;}
+.report-out.show{display:block;}
+.report-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--dk3);border-bottom:1px solid var(--dk4);flex-wrap:wrap;gap:8px;}
+.report-title{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1.5px;color:var(--y);}
+.report-actions{display:flex;gap:6px;flex-wrap:wrap;}
+.report-body{padding:18px;}
+.report-text{font-family:'DM Mono',monospace;font-size:12px;line-height:1.8;color:var(--lt);white-space:pre-wrap;}
+
+/* OFFLINE BANNER */
+.offline-banner{background:rgba(231,76,60,.1);border:1px solid var(--rd);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--rd);margin-bottom:16px;display:none;}
+.offline-banner.show{display:block;}
+.queue-badge{background:var(--or);color:#fff;border-radius:100px;padding:2px 8px;font-size:11px;font-weight:700;margin-left:6px;}
+
+/* WARN */
+.warn{background:rgba(232,99,26,.1);border:1px solid var(--or);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--or);margin-bottom:16px;display:none;}
+.warn.show{display:block;}
+
+/* GPS COORDS */
+.gps-display{font-family:'DM Mono',monospace;font-size:12px;color:var(--bl);}
+
+/* WIND */
+.wind-auto{font-family:'DM Mono',monospace;font-size:12px;color:var(--gr);margin-top:4px;}
+
+/* OFFLINE INDICATOR DOT */
+.saved-dot{width:7px;height:7px;border-radius:50%;background:var(--gr);display:inline-block;margin-right:5px;}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:none;align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal{background:var(--dk2);border:1.5px solid var(--y);border-radius:12px;padding:28px;max-width:440px;width:90%;max-height:85vh;overflow-y:auto;}
+.modal h3{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--y);margin-bottom:16px;letter-spacing:1.5px;}
+
+/* DIVIDER */
+.divider{height:1px;background:var(--dk3);margin:24px 0;}
+
+@media(max-width:600px){
+  .tog-grid{grid-template-columns:1fr;}
+  header{padding:12px 16px;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SiteLog<span> AI</span></div>
+  <div class="header-right">
+    <div class="gps-badge" id="gpsBadge" onclick="refreshGPS()">📍 Getting GPS...</div>
+    <div class="online-badge offline" id="onlineBadge">● OFFLINE</div>
+    <div class="date-badge" id="dateBadge"></div>
+  </div>
+</header>
+
+<!-- OFFLINE BANNER -->
+<div class="container">
+<div class="offline-banner" id="offlineBanner">
+  ⚡ You are offline. All data is saved locally on this device. Report will be generated &amp; emailed automatically when internet is restored.
+  <span class="queue-badge" id="queueBadge" style="display:none;">0 queued</span>
+</div>
+
+<!-- WARN -->
+<div class="warn" id="noKeyWarn">⚠ No API key set. Enter your Anthropic API key to enable AI.</div>
+
+<!-- API KEY -->
+<div class="panel">
+  <div class="sec-title">Configuration</div>
+  <div class="g2" style="margin-bottom:10px;">
+    <div>
+      <div class="field-label">Anthropic API Key</div>
+      <input type="password" id="apiKey" placeholder="sk-ant-...">
+    </div>
+    <div>
+      <div class="field-label">Email Report To</div>
+      <input type="email" id="emailTo" placeholder="engineer@company.com">
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <button class="btn btn-y btn-sm" onclick="saveConfig()">💾 Save Config</button>
+    <button class="btn btn-ghost btn-sm" onclick="loadSavedDraft()">📂 Load Saved Draft</button>
+    <button class="btn btn-red btn-sm" onclick="clearDraft()">🗑 Clear Draft</button>
+  </div>
+  <div style="margin-top:8px;font-size:11px;color:var(--mu);">
+    <span class="saved-dot" id="savedDot" style="background:var(--mu)"></span>
+    <span id="savedStatus">No draft saved</span>
+  </div>
+</div>
+
+<!-- PROJECT INFO -->
+<div class="panel">
+  <div class="sec-title">Project Info</div>
+  <div class="g4" style="margin-bottom:12px;">
+    <div class="fc">
+      <div class="field-label">Project Name</div>
+      <input type="text" id="project" placeholder="Tower Block A" oninput="autosave()">
+    </div>
+    <div class="fc">
+      <div class="field-label">Engineer Name</div>
+      <input type="text" id="engineer" placeholder="Full name" oninput="autosave()">
+    </div>
+    <div class="fc">
+      <div class="field-label">Report Date</div>
+      <input type="date" id="reportDate" oninput="autosave()">
+    </div>
+    <div class="fc">
+      <div class="field-label">Overall Progress %</div>
+      <input type="number" id="progress" min="0" max="100" placeholder="42" oninput="autosave()">
+    </div>
+    <div class="fc">
+      <div class="field-label">Workers on Site</div>
+      <input type="number" id="workers" placeholder="24" oninput="autosave()">
+    </div>
+    <div class="fc">
+      <div class="field-label">Shift</div>
+      <select id="shift" onchange="autosave()">
+        <option value="Day">Day Shift</option>
+        <option value="Night">Night Shift</option>
+        <option value="Full">Full Day</option>
+      </select>
+    </div>
+    <div class="fc" style="grid-column:span 2;">
+      <div class="field-label">GPS Location</div>
+      <div class="gps-display" id="gpsDisplay">Acquiring coordinates...</div>
+    </div>
+  </div>
+
+  <!-- WEATHER -->
+  <div class="field-label">Weather</div>
+  <div class="weather-chips">
+    <button class="wc" onclick="setWeather(this,'☀ Sunny')">☀ Sunny</button>
+    <button class="wc" onclick="setWeather(this,'⛅ Partly Cloudy')">⛅ Cloudy</button>
+    <button class="wc" onclick="setWeather(this,'🌧 Rainy')">🌧 Rainy</button>
+    <button class="wc" onclick="setWeather(this,'🌩 Storm')">🌩 Storm</button>
+    <button class="wc" onclick="setWeather(this,'🌬 Windy')">🌬 Windy</button>
+    <button class="wc" onclick="setWeather(this,'❄ Cold')">❄ Cold</button>
+  </div>
+  <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div>
+      <div class="field-label" style="margin-bottom:3px;">Wind Speed</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="number" id="windSpeed" placeholder="—" style="width:80px;" oninput="autosave()">
+        <span style="font-size:12px;color:var(--mu);">mph</span>
+        <button class="btn btn-ghost btn-sm" onclick="fetchWind()" style="font-size:11px;padding:5px 10px;">🌬 Auto-fetch</button>
+      </div>
+      <div class="wind-auto" id="windAuto"></div>
+    </div>
+    <div>
+      <div class="field-label" style="margin-bottom:3px;">Temperature</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="number" id="temp" placeholder="—" style="width:70px;" oninput="autosave()">
+        <span style="font-size:12px;color:var(--mu);">°F</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EQUIPMENT LOG -->
+<div class="panel">
+  <div class="sec-title">Equipment Log</div>
+  <div class="sec-sub">Required for accident reporting compliance. All equipment must be logged.</div>
+
+  <div id="eqList"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+    <button class="btn btn-ghost btn-sm" onclick="addEquipment()">＋ Add Equipment</button>
+    <button class="btn btn-ghost btn-sm" onclick="addEquipment(true)">🚛 Add Vehicle</button>
+  </div>
+</div>
+
+<!-- LABOR LOG -->
+<div class="panel">
+  <div class="sec-title">Labor Compliance Log</div>
+  <div class="sec-sub">Legal names and roles required for labor compliance. Use camera to scan ID cards.</div>
+
+  <div id="laborList"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+    <button class="btn btn-ghost btn-sm" onclick="addLabor()">＋ Add Worker</button>
+    <button class="btn btn-or btn-sm" onclick="addLaborBulk()">⚡ Bulk Add (paste list)</button>
+  </div>
+</div>
+
+<!-- SITE NOTES (AI voice) -->
+<div class="voice-hero">
+  <div class="vt">Today's Site Notes</div>
+  <div class="vs">Speak or type rough notes in any language — AI translates &amp; structures the full report</div>
+
+  <!-- Language selector -->
+  <div style="margin-bottom:12px;">
+    <div style="font-size:11px;color:var(--mu);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Input Language</div>
+    <div class="lang-pills">
+      <button class="lp active" onclick="setLang(this,'en')" data-lang="en">🇺🇸 English</button>
+      <button class="lp" onclick="setLang(this,'es')" data-lang="es">🇪🇸 Español</button>
+      <button class="lp" onclick="setLang(this,'zh')" data-lang="zh">🇨🇳 中文</button>
+      <button class="lp" onclick="setLang(this,'vi')" data-lang="vi">🇻🇳 Tiếng Việt</button>
+    </div>
+  </div>
+
+  <div class="voice-area">
+    <textarea id="voiceText" placeholder="e.g. Poured 40m³ concrete on columns C1-C8, done at noon. 2hr delay — mixer broke. Safety near-miss at scaffolding..." oninput="autosave()"></textarea>
+  </div>
+
+  <div class="voice-controls">
+    <button class="btn btn-or btn-rec" id="recordBtn" onclick="toggleRecord()">
+      <div class="mic-dot"></div> Record Voice
+    </button>
+    <button class="btn btn-y" id="generateBtn" onclick="generateReport()">⚡ Generate Full Report</button>
+    <button class="btn btn-ghost" onclick="clearNotes()">Clear</button>
+  </div>
+
+  <div class="hint-chips">
+    <span class="hc" onclick="addHint('Poured concrete on ')"># Concrete pour</span>
+    <span class="hc" onclick="addHint('Safety incident: ')"># Safety</span>
+    <span class="hc" onclick="addHint('Delay caused by ')"># Delay</span>
+    <span class="hc" onclick="addHint('Inspection by ')"># Inspection</span>
+    <span class="hc" onclick="addHint('Materials delivered: ')"># Materials</span>
+    <span class="hc" onclick="addHint('RFI submitted for ')"># RFI</span>
+    <span class="hc" onclick="addHint('Tomorrow we plan to ')"># Plan</span>
+  </div>
+</div>
+
+<!-- REPORT SECTIONS -->
+<div style="margin-bottom:10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu);">Include in Report</div>
+<div class="tog-grid" style="margin-bottom:20px;">
+  <div class="tog active" id="tog-work" onclick="togSection('work')"><div class="tog-box">✓</div><div><div>Work Completed</div><div class="tog-desc">Tasks, quantities, locations</div></div></div>
+  <div class="tog active" id="tog-safety" onclick="togSection('safety')"><div class="tog-box">✓</div><div><div>Safety &amp; HSE</div><div class="tog-desc">Incidents, PPE, observations</div></div></div>
+  <div class="tog active" id="tog-resources" onclick="togSection('resources')"><div class="tog-box">✓</div><div><div>Resources &amp; Equipment</div><div class="tog-desc">Labor, machinery, materials</div></div></div>
+  <div class="tog active" id="tog-delays" onclick="togSection('delays')"><div class="tog-box">✓</div><div><div>Delays &amp; Issues</div><div class="tog-desc">Blockers, RFIs, changes</div></div></div>
+  <div class="tog active" id="tog-quality" onclick="togSection('quality')"><div class="tog-box">✓</div><div><div>Quality &amp; Inspections</div><div class="tog-desc">Tests, checkpoints, sign-offs</div></div></div>
+  <div class="tog active" id="tog-plan" onclick="togSection('plan')"><div class="tog-box">✓</div><div><div>Plan for Tomorrow</div><div class="tog-desc">Next day schedule</div></div></div>
+</div>
+
+<!-- PHOTOS -->
+<div class="panel">
+  <div class="sec-title">📸 Site Photos</div>
+  <div class="sec-sub">AI auto-captions each photo. Tap to upload or use camera directly.</div>
+  <div class="photo-drop" id="photoDropZone" onclick="document.getElementById('photoInput').click()">
+    <div style="font-size:32px;margin-bottom:8px;">📷</div>
+    <div style="color:var(--mu);font-size:13px;"><strong style="color:var(--y);">Tap to add photos</strong> or drag &amp; drop · Camera or gallery</div>
+    <input type="file" id="photoInput" accept="image/*" multiple capture="environment" style="display:none" onchange="handlePhotos(this.files)">
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+    <span id="photoStats" style="font-size:12px;color:var(--mu);">No photos</span>
+    <button class="btn btn-or btn-sm" id="aiAllBtn" style="display:none;" onclick="captionAll()">⚡ AI Caption All</button>
+  </div>
+  <div class="photo-grid" id="photoGrid"></div>
+</div>
+
+<!-- SIGNATURES -->
+<div class="panel">
+  <div class="sec-title">✍ Daily Sign-Off Signatures</div>
+  <div class="sec-sub">Both parties must sign at end of each shift.</div>
+  <div class="g2">
+    <!-- Inspector -->
+    <div>
+      <div style="font-size:12px;font-weight:700;color:var(--y);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Owner / Field Inspector</div>
+      <input class="sig-name-input" id="inspectorName" placeholder="Inspector full name" oninput="autosave()">
+      <canvas class="sig-area" id="canvasInspector" width="400" height="130"></canvas>
+      <div class="sig-controls">
+        <button class="btn btn-ghost btn-sm" onclick="clearSig('Inspector')">Clear</button>
+        <span style="font-size:11px;color:var(--mu);" id="sigStatusInspector">Not signed</span>
+      </div>
+    </div>
+    <!-- Superintendent -->
+    <div>
+      <div style="font-size:12px;font-weight:700;color:var(--y);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Contractor Superintendent</div>
+      <input class="sig-name-input" id="superintendentName" placeholder="Superintendent full name" oninput="autosave()">
+      <canvas class="sig-area" id="canvasSuperintendent" width="400" height="130"></canvas>
+      <div class="sig-controls">
+        <button class="btn btn-ghost btn-sm" onclick="clearSig('Superintendent')">Clear</button>
+        <span style="font-size:11px;color:var(--mu);" id="sigStatusSuperintendent">Not signed</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS -->
+<div class="status-bar" id="statusBar">
+  <div class="spinner"></div>
+  <span id="statusText">Processing...</span>
+</div>
+
+<!-- REPORT OUTPUT -->
+<div class="report-out" id="reportOut">
+  <div class="report-head">
+    <div class="report-title">Generated Report</div>
+    <div class="report-actions">
+      <button class="btn btn-ghost btn-sm" onclick="generateReport()">↺ Regenerate</button>
+      <button class="btn btn-gr btn-sm" onclick="copyReport()">⎘ Copy Text</button>
+      <button class="btn btn-gr btn-sm" onclick="downloadReport()">↓ Download</button>
+      <button class="btn btn-y btn-sm" onclick="sendEmail()">✉ Send Email</button>
+    </div>
+  </div>
+  <div class="report-body">
+    <div class="report-text" id="reportContent"></div>
+    <div id="reportPhotoArea"></div>
+    <div id="reportSigArea" style="margin-top:20px;"></div>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<!-- BULK LABOR MODAL -->
+<div class="modal-overlay" id="bulkModal">
+  <div class="modal">
+    <h3>Bulk Add Workers</h3>
+    <p style="font-size:13px;color:var(--mu);margin-bottom:12px;">Paste a list, one worker per line in format:<br><code style="color:var(--y);">Full Name, Role</code><br>e.g. <em>John Martinez, Ironworker</em></p>
+    <textarea id="bulkText" style="min-height:140px;margin-bottom:12px;" placeholder="John Martinez, Ironworker&#10;Maria Nguyen, Electrician&#10;Wei Chen, Carpenter"></textarea>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-y" onclick="processBulkLabor()">Add Workers</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('bulkModal').classList.remove('show')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let apiKey = '';
+let emailTo = '';
+let weatherVal = '';
+let inputLang = 'en';
+let selectedSections = new Set(['work','safety','resources','delays','quality','plan']);
+let photos = [];
+let photoCounter = 0;
+let equipmentList = [];
+let laborList = [];
+let gpsCoords = null;
+let isRecording = false;
+let mediaRecorder, audioChunks = [];
+let offlineQueue = [];
+let autosaveTimer = null;
+let sigData = { Inspector: null, Superintendent: null };
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+const now = new Date();
+document.getElementById('dateBadge').textContent = now.toDateString();
+document.getElementById('reportDate').value = now.toISOString().split('T')[0];
+
+// Load saved config
+(function init(){
+  const cfg = JSON.parse(localStorage.getItem('sitelog_config') || '{}');
+  if(cfg.apiKey){ apiKey = cfg.apiKey; document.getElementById('apiKey').value = '••••••••'; }
+  if(cfg.emailTo){ emailTo = cfg.emailTo; document.getElementById('emailTo').value = cfg.emailTo; }
+  
+  const draft = JSON.parse(localStorage.getItem('sitelog_draft') || 'null');
+  if(draft){ 
+    document.getElementById('savedStatus').textContent = 'Draft saved: ' + new Date(draft.ts).toLocaleString();
+    document.getElementById('savedDot').style.background = 'var(--gr)';
+  }
+  
+  const queue = JSON.parse(localStorage.getItem('sitelog_queue') || '[]');
+  offlineQueue = queue;
+  updateQueueBadge();
+  
+  // Start online monitor
+  updateOnlineStatus();
+  window.addEventListener('online', () => { updateOnlineStatus(); processQueue(); });
+  window.addEventListener('offline', updateOnlineStatus);
+  
+  // GPS
+  getGPS();
+  
+  // Default equipment & labor rows
+  addEquipment();
+  addLabor();
+  addLabor();
+  
+  // Setup signature canvases
+  setupSig('Inspector');
+  setupSig('Superintendent');
+  
+  // Photo drag/drop
+  const dz = document.getElementById('photoDropZone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handlePhotos(e.dataTransfer.files); });
+})();
+
+// ═══════════════════════════════════════════════════════
+// ONLINE / OFFLINE
+// ═══════════════════════════════════════════════════════
+function updateOnlineStatus(){
+  const online = navigator.onLine;
+  const badge = document.getElementById('onlineBadge');
+  const banner = document.getElementById('offlineBanner');
+  badge.className = 'online-badge ' + (online ? 'online' : 'offline');
+  badge.textContent = online ? '● ONLINE' : '● OFFLINE';
+  banner.classList.toggle('show', !online);
+}
+
+function updateQueueBadge(){
+  const b = document.getElementById('queueBadge');
+  if(offlineQueue.length > 0){
+    b.style.display = 'inline';
+    b.textContent = offlineQueue.length + ' queued';
+  } else {
+    b.style.display = 'none';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// AUTOSAVE (localStorage draft)
+// ═══════════════════════════════════════════════════════
+function autosave(){
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(saveDraft, 1500);
+}
+
+function saveDraft(){
+  const draft = {
+    ts: Date.now(),
+    project: v('project'), engineer: v('engineer'), reportDate: v('reportDate'),
+    progress: v('progress'), workers: v('workers'), shift: v('shift'),
+    weather: weatherVal, windSpeed: v('windSpeed'), temp: v('temp'),
+    voiceText: v('voiceText'), inputLang,
+    equipmentList, laborList,
+    inspectorName: v('inspectorName'), superintendentName: v('superintendentName'),
+    gpsCoords
+  };
+  localStorage.setItem('sitelog_draft', JSON.stringify(draft));
+  document.getElementById('savedStatus').textContent = 'Auto-saved: ' + new Date().toLocaleTimeString();
+  document.getElementById('savedDot').style.background = 'var(--gr)';
+}
+
+function loadSavedDraft(){
+  const draft = JSON.parse(localStorage.getItem('sitelog_draft') || 'null');
+  if(!draft){ alert('No saved draft found.'); return; }
+  set('project', draft.project); set('engineer', draft.engineer);
+  set('reportDate', draft.reportDate); set('progress', draft.progress);
+  set('workers', draft.workers); set('shift', draft.shift);
+  set('windSpeed', draft.windSpeed); set('temp', draft.temp);
+  set('voiceText', draft.voiceText);
+  set('inspectorName', draft.inspectorName || '');
+  set('superintendentName', draft.superintendentName || '');
+  if(draft.weather){ weatherVal = draft.weather; document.querySelectorAll('.wc').forEach(b=>{ if(b.textContent.trim()===draft.weather.trim()){b.classList.add('active');}else b.classList.remove('active'); }); }
+  if(draft.gpsCoords) gpsCoords = draft.gpsCoords;
+  if(draft.inputLang) setLangByCode(draft.inputLang);
+  // Reload equipment
+  equipmentList = draft.equipmentList || [];
+  document.getElementById('eqList').innerHTML = '';
+  equipmentList = [];
+  (draft.equipmentList||[]).forEach(eq => addEquipment(eq.isVehicle, eq));
+  // Reload labor
+  laborList = [];
+  document.getElementById('laborList').innerHTML = '';
+  (draft.laborList||[]).forEach(lb => addLaborRow(lb));
+  
+  updateGPSDisplay();
+  alert('Draft loaded ✓');
+}
+
+function clearDraft(){
+  if(!confirm('Clear saved draft?')) return;
+  localStorage.removeItem('sitelog_draft');
+  document.getElementById('savedStatus').textContent = 'Draft cleared';
+  document.getElementById('savedDot').style.background = 'var(--mu)';
+}
+
+// ═══════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════
+function saveConfig(){
+  const k = document.getElementById('apiKey').value.trim();
+  const e = document.getElementById('emailTo').value.trim();
+  if(k && !k.startsWith('•')) apiKey = k;
+  if(e) emailTo = e;
+  localStorage.setItem('sitelog_config', JSON.stringify({ apiKey, emailTo }));
+  document.getElementById('apiKey').value = '';
+  document.getElementById('apiKey').placeholder = '✓ API key saved';
+  document.getElementById('noKeyWarn').classList.remove('show');
+  alert('Configuration saved ✓');
+}
+
+// ═══════════════════════════════════════════════════════
+// GPS
+// ═══════════════════════════════════════════════════════
+function getGPS(){
+  if(!navigator.geolocation){ document.getElementById('gpsDisplay').textContent = 'GPS not supported'; return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      gpsCoords = { lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6), acc: Math.round(pos.coords.accuracy) };
+      updateGPSDisplay();
+      document.getElementById('gpsBadge').textContent = '📍 GPS ✓';
+      autosave();
+    },
+    err => {
+      document.getElementById('gpsDisplay').textContent = 'GPS unavailable — enable location access';
+      document.getElementById('gpsBadge').textContent = '📍 No GPS';
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+function refreshGPS(){ document.getElementById('gpsBadge').textContent = '📍 Updating...'; getGPS(); }
+function updateGPSDisplay(){
+  if(!gpsCoords) return;
+  document.getElementById('gpsDisplay').textContent = `${gpsCoords.lat}, ${gpsCoords.lng}  (±${gpsCoords.acc}m)`;
+}
+
+// ═══════════════════════════════════════════════════════
+// WEATHER / WIND
+// ═══════════════════════════════════════════════════════
+function setWeather(btn, val){
+  document.querySelectorAll('.wc').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  weatherVal = val;
+  autosave();
+}
+
+async function fetchWind(){
+  if(!gpsCoords){ alert('GPS required to auto-fetch wind. Enable location access.'); return; }
+  document.getElementById('windAuto').textContent = 'Fetching...';
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${gpsCoords.lat}&longitude=${gpsCoords.lng}&current_weather=true&wind_speed_unit=mph`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const ws = data.current_weather?.windspeed || '--';
+    const wd = data.current_weather?.winddirection || '--';
+    document.getElementById('windSpeed').value = Math.round(ws);
+    document.getElementById('windAuto').textContent = `✓ Live: ${ws} mph, direction ${wd}°`;
+    autosave();
+  } catch(e) {
+    document.getElementById('windAuto').textContent = 'Could not fetch — enter manually';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// EQUIPMENT
+// ═══════════════════════════════════════════════════════
+let eqCounter = 0;
+function addEquipment(isVehicle=false, prefill=null){
+  const id = ++eqCounter;
+  const eq = prefill || { id, eqId:'', name:'', isVehicle, make:'', model:'', plate:'', status:'Active', idleHrs:0, idleMins:0 };
+  if(!prefill) equipmentList.push(eq);
+  
+  const div = document.createElement('div');
+  div.id = 'eq-row-'+id;
+  div.style.cssText = 'background:var(--dk3);border-radius:8px;padding:12px;margin-bottom:10px;';
+  div.innerHTML = `
+    <div style="display:grid;grid-template-columns:90px 1fr ${isVehicle?'1fr 1fr 120px':''}  100px auto;gap:8px;align-items:end;">
+      <div>
+        <div class="field-label">Equip ID</div>
+        <input type="text" value="${eq.eqId||''}" placeholder="EQ-001" oninput="updateEq(${id},'eqId',this.value)">
+      </div>
+      <div>
+        <div class="field-label">Name / Type</div>
+        <input type="text" value="${eq.name||''}" placeholder="${isVehicle?'Dump Truck':'Tower Crane'}" oninput="updateEq(${id},'name',this.value)">
+      </div>
+      ${isVehicle ? `
+      <div>
+        <div class="field-label">Make &amp; Model</div>
+        <input type="text" value="${eq.make||''}" placeholder="Caterpillar 777G" oninput="updateEq(${id},'make',this.value)">
+      </div>
+      <div>
+        <div class="field-label">License Plate</div>
+        <input type="text" value="${eq.plate||''}" placeholder="ABC-1234" oninput="updateEq(${id},'plate',this.value)">
+      </div>` : ''}
+      <div>
+        <div class="field-label">Status</div>
+        <select onchange="updateEq(${id},'status',this.value);toggleIdleRow(${id},this.value)">
+          <option value="Active" ${eq.status==='Active'?'selected':''}>Active</option>
+          <option value="Idle" ${eq.status==='Idle'?'selected':''}>Idle</option>
+          <option value="Off Site" ${eq.status==='Off Site'?'selected':''}>Off Site</option>
+          <option value="Breakdown" ${eq.status==='Breakdown'?'selected':''}>Breakdown</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end;">
+        <button class="btn btn-red" onclick="removeEq(${id})" style="white-space:nowrap;">✕ Remove</button>
+      </div>
+    </div>
+    <div id="idle-row-${id}" style="margin-top:8px;display:${eq.status==='Idle'?'flex':'none'};align-items:center;gap:10px;background:rgba(232,99,26,.07);border:1px solid rgba(232,99,26,.3);border-radius:6px;padding:8px 12px;">
+      <span style="font-size:12px;color:var(--or);font-weight:600;">⏱ Idle Time:</span>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <input type="number" min="0" max="24" style="width:55px;" value="${eq.idleHrs||0}" placeholder="0" oninput="updateEq(${id},'idleHrs',this.value)">
+        <span style="font-size:12px;color:var(--mu);">hrs</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <input type="number" min="0" max="59" style="width:55px;" value="${eq.idleMins||0}" placeholder="0" oninput="updateEq(${id},'idleMins',this.value)">
+        <span style="font-size:12px;color:var(--mu);">mins</span>
+      </div>
+      <span style="font-size:11px;color:var(--mu);">Reason: <input type="text" style="width:130px;display:inline-block;" placeholder="Waiting for inspection" oninput="updateEq(${id},'idleReason',this.value)" value="${eq.idleReason||''}"></span>
+    </div>
+    ${isVehicle ? `<div style="margin-top:6px;"><span style="font-size:10px;color:var(--y);background:rgba(245,197,24,.1);padding:2px 7px;border-radius:4px;">🚛 VEHICLE</span></div>` : ''}
+  `;
+  document.getElementById('eqList').appendChild(div);
+  autosave();
+}
+
+function updateEq(id, field, val){
+  const eq = equipmentList.find(e=>e.id===id);
+  if(eq) eq[field] = val;
+  autosave();
+}
+
+function toggleIdleRow(id, status){
+  const row = document.getElementById('idle-row-'+id);
+  if(row) row.style.display = status==='Idle' ? 'flex' : 'none';
+}
+
+function removeEq(id){
+  equipmentList = equipmentList.filter(e=>e.id!==id);
+  const el = document.getElementById('eq-row-'+id);
+  if(el) el.remove();
+  autosave();
+}
+
+// ═══════════════════════════════════════════════════════
+// LABOR
+// ═══════════════════════════════════════════════════════
+let lbCounter = 0;
+function addLabor(){ addLaborRow(null); }
+function addLaborRow(prefill){
+  const id = ++lbCounter;
+  const lb = prefill || { id, name:'', role:'', company:'' };
+  if(!prefill) laborList.push(lb);
+  
+  const div = document.createElement('div');
+  div.id = 'lb-row-'+id;
+  div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr 36px;gap:8px;align-items:end;padding:8px 0;border-bottom:1px solid var(--dk3);';
+  div.innerHTML = `
+    <div>
+      ${id===1?'<div class="field-label">Legal Full Name</div>':''}
+      <input type="text" value="${lb.name||''}" placeholder="First Last" oninput="updateLb(${id},'name',this.value)">
+    </div>
+    <div>
+      ${id===1?'<div class="field-label">Role / Trade</div>':''}
+      <input type="text" value="${lb.role||''}" placeholder="Carpenter, Electrician..." oninput="updateLb(${id},'role',this.value)">
+    </div>
+    <div>
+      ${id===1?'<div class="field-label">Company / Sub</div>':''}
+      <input type="text" value="${lb.company||''}" placeholder="ABC Contractors" oninput="updateLb(${id},'company',this.value)">
+    </div>
+    <div style="${id===1?'padding-top:18px':''}">
+      <button class="btn btn-red" onclick="removeLb(${id})" style="padding:8px 10px;font-size:14px;line-height:1;">✕</button>
+    </div>
+  `;
+  document.getElementById('laborList').appendChild(div);
+  autosave();
+}
+
+function updateLb(id, field, val){
+  const lb = laborList.find(l=>l.id===id);
+  if(lb) lb[field] = val;
+  autosave();
+}
+
+function removeLb(id){
+  laborList = laborList.filter(l=>l.id!==id);
+  const el = document.getElementById('lb-row-'+id);
+  if(el) el.remove();
+  autosave();
+}
+
+function addLaborBulk(){ document.getElementById('bulkModal').classList.add('show'); }
+function processBulkLabor(){
+  const lines = document.getElementById('bulkText').value.trim().split('\n');
+  lines.forEach(line => {
+    const parts = line.split(',');
+    if(!parts[0].trim()) return;
+    const lb = { id: ++lbCounter, name: parts[0].trim(), role: (parts[1]||'').trim(), company: (parts[2]||'').trim() };
+    laborList.push(lb);
+    addLaborRow(lb);
+  });
+  document.getElementById('bulkText').value = '';
+  document.getElementById('bulkModal').classList.remove('show');
+  autosave();
+}
+
+// ═══════════════════════════════════════════════════════
+// LANGUAGE
+// ═══════════════════════════════════════════════════════
+function setLang(btn, lang){
+  document.querySelectorAll('.lp').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  inputLang = lang;
+  const ta = document.getElementById('voiceText');
+  const placeholders = {
+    en:'e.g. Poured 40m³ concrete on columns C1-C8, done at noon...',
+    es:'p.ej. Vaciamos 40m³ de concreto en columnas C1-C8, terminamos al mediodía...',
+    zh:'例如：在柱子C1-C8浇筑了40立方米混凝土，中午完工...',
+    vi:'vd. Đổ 40m³ bê tông trên cột C1-C8, hoàn thành vào trưa...'
+  };
+  ta.placeholder = placeholders[lang] || placeholders.en;
+  autosave();
+}
+
+function setLangByCode(lang){
+  const btn = document.querySelector(`.lp[data-lang="${lang}"]`);
+  if(btn) setLang(btn, lang);
+}
+
+// ═══════════════════════════════════════════════════════
+// VOICE RECORDING
+// ═══════════════════════════════════════════════════════
+async function toggleRecord(){
+  if(!isRecording){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const langNote = inputLang !== 'en' ? ` (recorded in ${inputLang})` : '';
+        document.getElementById('voiceText').placeholder = `🎙 Voice recorded${langNote} — add any text notes, then Generate Report`;
+      };
+      mediaRecorder.start();
+      isRecording = true;
+      const btn = document.getElementById('recordBtn');
+      btn.classList.add('recording');
+      btn.innerHTML = '<div class="mic-dot"></div> Recording... (tap to stop)';
+    } catch(e){ alert('Microphone unavailable. Type notes instead.'); }
+  } else {
+    mediaRecorder.stop();
+    isRecording = false;
+    const btn = document.getElementById('recordBtn');
+    btn.classList.remove('recording');
+    btn.innerHTML = '<div class="mic-dot"></div> Record Voice';
+    mediaRecorder.stream.getTracks().forEach(t=>t.stop());
+  }
+}
+
+function addHint(text){
+  const ta = document.getElementById('voiceText');
+  ta.value += (ta.value && !ta.value.endsWith('\n') ? '\n' : '') + text;
+  ta.focus();
+}
+
+function clearNotes(){
+  document.getElementById('voiceText').value = '';
+}
+
+// ═══════════════════════════════════════════════════════
+// SECTION TOGGLES
+// ═══════════════════════════════════════════════════════
+function togSection(key){
+  const el = document.getElementById('tog-'+key);
+  if(selectedSections.has(key)){
+    selectedSections.delete(key); el.classList.remove('active'); el.querySelector('.tog-box').textContent='';
+  } else {
+    selectedSections.add(key); el.classList.add('active'); el.querySelector('.tog-box').textContent='✓';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// PHOTOS
+// ═══════════════════════════════════════════════════════
+function handlePhotos(files){
+  Array.from(files).forEach(f=>{
+    if(!f.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const id = ++photoCounter;
+      const dataUrl = e.target.result;
+      const base64 = dataUrl.split(',')[1];
+      photos.push({id, dataUrl, base64, mimeType:f.type, caption:'', category:'general'});
+      renderPhotoCard(id, dataUrl);
+      updatePhotoStats();
+    };
+    reader.readAsDataURL(f);
+  });
+}
+
+function renderPhotoCard(id, dataUrl){
+  const grid = document.getElementById('photoGrid');
+  const card = document.createElement('div');
+  card.className = 'photo-card';
+  card.id = 'pcard-'+id;
+  card.innerHTML = `
+    <img src="${dataUrl}" alt="Photo ${id}">
+    <div class="ai-done-badge" id="aibadge-${id}">AI ✓</div>
+    <button class="photo-remove" onclick="removePhoto(${id})">×</button>
+    <div class="photo-card-body">
+      <textarea class="photo-caption-input" id="pcap-${id}" placeholder="AI caption or type..." style="font-size:11px;min-height:36px;background:transparent;border:none;width:100%;color:var(--lt);font-family:'DM Sans',sans-serif;resize:none;outline:none;" oninput="updatePhotoCap(${id},this.value)"></textarea>
+    </div>
+    <div class="photo-card-foot">
+      <select class="photo-cat" onchange="updatePhotoCat(${id},this.value)">
+        <option value="general">General</option>
+        <option value="progress">Progress</option>
+        <option value="safety">Safety</option>
+        <option value="quality">Quality</option>
+        <option value="defect">Defect</option>
+        <option value="material">Material</option>
+        <option value="equipment">Equipment</option>
+      </select>
+      <button class="photo-ai-btn" id="paibtn-${id}" onclick="captionPhoto(${id})">⚡ AI Caption</button>
+    </div>
+  `;
+  grid.appendChild(card);
+}
+
+function updatePhotoCap(id,v){ const p=photos.find(x=>x.id===id); if(p) p.caption=v; }
+function updatePhotoCat(id,v){ const p=photos.find(x=>x.id===id); if(p) p.category=v; }
+function removePhoto(id){ photos=photos.filter(x=>x.id!==id); const el=document.getElementById('pcard-'+id); if(el) el.remove(); updatePhotoStats(); }
+function updatePhotoStats(){
+  document.getElementById('photoStats').textContent = photos.length ? photos.length+' photo'+(photos.length>1?'s':'')+' attached' : 'No photos';
+  document.getElementById('aiAllBtn').style.display = photos.length ? 'inline-block' : 'none';
+}
+
+async function captionPhoto(id){
+  if(!apiKey){ document.getElementById('noKeyWarn').classList.add('show'); return; }
+  const photo = photos.find(p=>p.id===id);
+  if(!photo) return;
+  const btn = document.getElementById('paibtn-'+id);
+  btn.textContent = '...'; btn.style.opacity='.5';
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({
+        model:"claude-sonnet-4-20250514",max_tokens:120,
+        messages:[{role:"user",content:[
+          {type:"image",source:{type:"base64",media_type:photo.mimeType,data:photo.base64}},
+          {type:"text",text:"Write a 1-2 sentence professional construction site photo caption (max 25 words). Describe what is visible: activity, location, materials, conditions. Use technical terms. Output ONLY the caption."}
+        ]}]
+      })
+    });
+    const data = await res.json();
+    if(data.error) throw new Error(data.error.message);
+    const cap = data.content.map(b=>b.text||'').join('').trim();
+    photo.caption = cap;
+    document.getElementById('pcap-'+id).value = cap;
+    document.getElementById('aibadge-'+id).classList.add('show');
+  } catch(e){ console.error(e); }
+  btn.textContent = '⚡ AI Caption'; btn.style.opacity='1';
+}
+
+async function captionAll(){ for(const p of photos) await captionPhoto(p.id); }
+
+// ═══════════════════════════════════════════════════════
+// SIGNATURES
+// ═══════════════════════════════════════════════════════
+function setupSig(role){
+  const canvas = document.getElementById('canvas'+role);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#1A1A1A';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle = '#F2EDE4';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  
+  let drawing = false, lastX=0, lastY=0;
+  
+  function getPos(e, canvas){
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    if(e.touches){
+      return { x:(e.touches[0].clientX - rect.left)*scaleX, y:(e.touches[0].clientY - rect.top)*scaleY };
+    }
+    return { x:(e.clientX - rect.left)*scaleX, y:(e.clientY - rect.top)*scaleY };
+  }
+  
+  function start(e){ e.preventDefault(); drawing=true; const p=getPos(e,canvas); lastX=p.x; lastY=p.y; }
+  function draw(e){
+    if(!drawing) return; e.preventDefault();
+    const p=getPos(e,canvas);
+    ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke();
+    lastX=p.x; lastY=p.y;
+    document.getElementById('sigStatus'+role).textContent = '✓ Signed';
+    document.getElementById('sigStatus'+role).style.color = 'var(--gr)';
+    sigData[role] = canvas.toDataURL();
+    autosave();
+  }
+  function stop(){ drawing=false; }
+  
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('mouseup', stop);
+  canvas.addEventListener('mouseleave', stop);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove', draw, {passive:false});
+  canvas.addEventListener('touchend', stop);
+}
+
+function clearSig(role){
+  const canvas = document.getElementById('canvas'+role);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#1A1A1A';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  sigData[role] = null;
+  document.getElementById('sigStatus'+role).textContent = 'Not signed';
+  document.getElementById('sigStatus'+role).style.color = '';
+  autosave();
+}
+
+// ═══════════════════════════════════════════════════════
+// REPORT GENERATION
+// ═══════════════════════════════════════════════════════
+async function generateReport(){
+  if(!apiKey){ document.getElementById('noKeyWarn').classList.add('show'); return; }
+  const notes = v('voiceText').trim();
+  if(!notes){ alert('Please enter site notes first.'); return; }
+  
+  if(!navigator.onLine){
+    // Queue for later
+    saveToQueue();
+    showStatus('⚡ Offline — report queued. Will generate & email when online.', false);
+    return;
+  }
+  
+  showStatus('AI is writing your report...', true);
+  document.getElementById('generateBtn').disabled = true;
+  
+  try {
+    const result = await callAI(buildPrompt());
+    const reportText = result;
+    renderReport(reportText);
+    
+    // Auto-email if address set
+    if(emailTo){
+      await sendEmailAPI(reportText);
+    }
+  } catch(err){
+    showStatus('✗ Error: '+err.message, false);
+    setTimeout(()=>hideStatus(),4000);
+  }
+  
+  document.getElementById('generateBtn').disabled = false;
+  hideStatus();
+}
+
+function buildPrompt(){
+  const project = v('project')||'N/A', engineer = v('engineer')||'N/A';
+  const reportDate = v('reportDate'), workers = v('workers')||'N/A';
+  const progress = v('progress')||'N/A', shift = v('shift')||'Day';
+  const wind = v('windSpeed') ? v('windSpeed')+' mph' : 'N/A';
+  const temp = v('temp') ? v('temp')+'°F' : 'N/A';
+  const notes = v('voiceText');
+  
+  const langMap = {en:'English',es:'Spanish',zh:'Chinese (Mandarin)',vi:'Vietnamese'};
+  const langNote = inputLang !== 'en' ? `\n\nIMPORTANT: The site notes below are written in ${langMap[inputLang]}. Translate to English and use in the report.` : '';
+  
+  const gpsStr = gpsCoords ? `${gpsCoords.lat}, ${gpsCoords.lng}` : 'Not available';
+  
+  // Equipment section
+  const eqLines = equipmentList.filter(e=>e.name).map(e=>{
+    let line = `  - ID: ${e.eqId||'N/A'} | ${e.name} | Status: ${e.status}`;
+    if(e.isVehicle && e.make) line += ` | Vehicle: ${e.make} | Plate: ${e.plate||'N/A'}`;
+    if(e.status==='Idle') line += ` | Idle: ${e.idleHrs||0}h ${e.idleMins||0}m${e.idleReason?' ('+e.idleReason+')':''}`;
+    return line;
+  }).join('\n');
+  
+  // Labor section
+  const lbLines = laborList.filter(l=>l.name).map(l=>`  - ${l.name} | ${l.role||'N/A'} | ${l.company||'N/A'}`).join('\n');
+  
+  const sections = [...selectedSections];
+  const sectionMap = {work:'Work Completed',safety:'Safety & HSE Observations',resources:'Resources & Equipment',delays:'Delays & Issues',quality:'Quality Control & Inspections',plan:'Plan for Tomorrow'};
+  const selectedLabels = sections.map(s=>sectionMap[s]).join(', ');
+  
+  return `You are an experienced construction site engineer. Write a formal, professional Construction Daily Report.${langNote}
+
+═══ PROJECT HEADER ═══
+Project: ${project}
+Date: ${reportDate}
+Shift: ${shift}
+Field Engineer: ${engineer}
+GPS Location: ${gpsStr}
+Workers on Site: ${workers}
+Overall Progress: ${progress}%
+Weather: ${weatherVal||'N/A'}
+Wind Speed: ${wind}
+Temperature: ${temp}
+
+═══ EQUIPMENT ON SITE ═══
+${eqLines||'None logged'}
+
+═══ LABOR ON SITE (Compliance Log) ═══
+${lbLines||'None logged'}
+
+═══ FIELD NOTES ═══
+"""
+${notes}
+"""
+
+═══ INSTRUCTIONS ═══
+Write a professional daily report with these sections: ${selectedLabels}.
+Also include a formal "Equipment Register" section summarizing all equipment above (note any idle equipment with hours and reason).
+Also include a "Labor Compliance Register" section listing all workers above in a clear format.
+Each section uses a ## header. Write in formal construction industry language. Be factual and concise. If info is missing write "Not reported." End with a sign-off block.`;
+}
+
+async function callAI(prompt){
+  const res = await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:prompt}]})
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error.message);
+  return data.content.map(b=>b.text||'').join('');
+}
+
+function renderReport(text){
+  const project = v('project')||'Project';
+  const engineer = v('engineer')||'N/A';
+  const reportDate = v('reportDate');
+  const progress = v('progress')||'N/A';
+  const workers = v('workers')||'N/A';
+  const gpsStr = gpsCoords ? `${gpsCoords.lat}, ${gpsCoords.lng}` : 'N/A';
+  
+  const header = `CONSTRUCTION DAILY REPORT
+${'═'.repeat(52)}
+Project:  ${project}
+Date:     ${reportDate}     Shift: ${v('shift')||'Day'}
+Engineer: ${engineer}
+GPS:      ${gpsStr}
+Workers:  ${workers}   Progress: ${progress}%
+Weather:  ${weatherVal||'N/A'}   Wind: ${v('windSpeed')||'N/A'} mph   Temp: ${v('temp')||'N/A'}°F
+${'═'.repeat(52)}
+
+`;
+  
+  // Photo log text
+  let photoLog = '';
+  if(photos.length > 0){
+    photoLog = '\n\n## Photo Log\n';
+    photos.forEach((p,i)=>{
+      photoLog += `Photo ${i+1} [${p.category.charAt(0).toUpperCase()+p.category.slice(1)}]: ${p.caption||'(No caption)'}\n`;
+    });
+  }
+  
+  const sigBlock = `\n\n${'─'.repeat(52)}\nSIGNATURES\n${'─'.repeat(52)}\nField Inspector (Owner): ${v('inspectorName')||'___________________'}    Date: ${reportDate}\n\nContractor Superintendent: ${v('superintendentName')||'___________________'}    Date: ${reportDate}\n`;
+  
+  const fullText = header + text + photoLog + sigBlock;
+  document.getElementById('reportContent').textContent = fullText;
+  
+  // Photo thumbnails in report
+  const pa = document.getElementById('reportPhotoArea');
+  pa.innerHTML = '';
+  if(photos.length > 0){
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:16px;border-top:1px solid var(--dk4);padding-top:16px;';
+    const title = document.createElement('div');
+    title.style.cssText = 'grid-column:1/-1;font-family:"Bebas Neue",sans-serif;font-size:18px;letter-spacing:1.5px;color:var(--y);';
+    title.textContent = `Photo Log — ${photos.length} Images`;
+    grid.appendChild(title);
+    photos.forEach((p,i)=>{
+      const card = document.createElement('div');
+      card.style.cssText = 'background:var(--dk3);border-radius:6px;overflow:hidden;border:1px solid var(--dk4);';
+      card.innerHTML = `<img src="${p.dataUrl}" style="width:100%;height:100px;object-fit:cover;display:block;"><div style="padding:6px 8px;"><div style="font-size:9px;color:var(--or);font-weight:700;text-transform:uppercase;">${p.category}</div><div style="font-size:10px;color:var(--lt);line-height:1.3;margin-top:2px;">Photo ${i+1}: ${p.caption||'(No caption)'}</div></div>`;
+      grid.appendChild(card);
+    });
+    pa.appendChild(grid);
+  }
+  
+  // Signatures in report
+  const sa = document.getElementById('reportSigArea');
+  sa.innerHTML = '';
+  const sigGrid = document.createElement('div');
+  sigGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;border-top:1px solid var(--dk4);padding-top:16px;';
+  ['Inspector','Superintendent'].forEach(role=>{
+    const box = document.createElement('div');
+    const label = role==='Inspector' ? 'Owner / Field Inspector' : 'Contractor Superintendent';
+    const name = role==='Inspector' ? v('inspectorName') : v('superintendentName');
+    box.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--y);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${label}</div><div style="font-size:12px;color:var(--mu);margin-bottom:6px;">${name||'Name not provided'}</div>`;
+    if(sigData[role]){
+      const img = document.createElement('img');
+      img.src = sigData[role];
+      img.style.cssText = 'width:100%;border:1px solid var(--dk4);border-radius:4px;background:var(--dk3);';
+      box.appendChild(img);
+    } else {
+      const blank = document.createElement('div');
+      blank.style.cssText = 'border:1px dashed var(--dk4);border-radius:4px;height:80px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--mu);';
+      blank.textContent = 'Not signed';
+      box.appendChild(blank);
+    }
+    sigGrid.appendChild(box);
+  });
+  sa.appendChild(sigGrid);
+  
+  document.getElementById('reportOut').classList.add('show');
+}
+
+// ═══════════════════════════════════════════════════════
+// EMAIL
+// ═══════════════════════════════════════════════════════
+async function sendEmailAPI(reportText){
+  // Uses EmailJS public API - engineer needs EmailJS account for production
+  // For now we use a mailto: fallback which works universally
+  const subject = encodeURIComponent(`Site Daily Report – ${v('project')||'Project'} – ${v('reportDate')}`);
+  const body = encodeURIComponent(reportText.substring(0,1900) + '\n\n[Full report generated by SiteLog AI]');
+  const mailto = `mailto:${emailTo}?subject=${subject}&body=${body}`;
+  window.open(mailto, '_blank');
+  showStatus('✉ Email client opened with report.', false);
+  setTimeout(hideStatus, 3000);
+}
+
+function sendEmail(){
+  const reportText = document.getElementById('reportContent').textContent;
+  if(!emailTo){ alert('No email address set. Add it in Configuration.'); return; }
+  sendEmailAPI(reportText);
+}
+
+// ═══════════════════════════════════════════════════════
+// OFFLINE QUEUE
+// ═══════════════════════════════════════════════════════
+function saveToQueue(){
+  const entry = {
+    ts: Date.now(),
+    prompt: buildPrompt(),
+    emailTo,
+    project: v('project'),
+    date: v('reportDate')
+  };
+  offlineQueue.push(entry);
+  localStorage.setItem('sitelog_queue', JSON.stringify(offlineQueue));
+  updateQueueBadge();
+  saveDraft();
+}
+
+async function processQueue(){
+  if(!navigator.onLine || offlineQueue.length===0 || !apiKey) return;
+  showStatus(`Processing ${offlineQueue.length} queued report(s)...`, true);
+  const processed = [];
+  for(const entry of offlineQueue){
+    try {
+      const text = await callAI(entry.prompt);
+      if(entry.emailTo){
+        const subject = encodeURIComponent(`[Queued] Site Daily Report – ${entry.project} – ${entry.date}`);
+        const body = encodeURIComponent(text.substring(0,1900));
+        window.open(`mailto:${entry.emailTo}?subject=${subject}&body=${body}`, '_blank');
+      }
+      processed.push(entry.ts);
+    } catch(e){ console.error('Queue error',e); }
+  }
+  offlineQueue = offlineQueue.filter(e => !processed.includes(e.ts));
+  localStorage.setItem('sitelog_queue', JSON.stringify(offlineQueue));
+  updateQueueBadge();
+  hideStatus();
+}
+
+// ═══════════════════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════════════════
+function copyReport(){
+  navigator.clipboard.writeText(document.getElementById('reportContent').textContent).then(()=>{
+    const btn = event.target; btn.textContent='✓ Copied!';
+    setTimeout(()=>btn.textContent='⎘ Copy Text',2000);
+  });
+}
+
+function downloadReport(){
+  const text = document.getElementById('reportContent').textContent;
+  const project = v('project')||'report';
+  const date = v('reportDate')||'today';
+  const blob = new Blob([text],{type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `SiteReport_${project.replace(/\s+/g,'_')}_${date}.txt`;
+  a.click();
+}
+
+// ═══════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════
+function v(id){ return document.getElementById(id)?.value || ''; }
+function set(id, val){ const el=document.getElementById(id); if(el) el.value=val||''; }
+function showStatus(msg, spin){
+  const bar = document.getElementById('statusBar');
+  bar.classList.add('show');
+  document.getElementById('statusText').textContent = msg;
+  bar.querySelector('.spinner').style.display = spin ? 'block' : 'none';
+}
+function hideStatus(){ document.getElementById('statusBar').classList.remove('show'); }
+</script>
+</body>
+</html>
