@@ -185,8 +185,25 @@ textarea{resize:vertical;}
 /* OFFLINE INDICATOR DOT */
 .saved-dot{width:7px;height:7px;border-radius:50%;background:var(--gr);display:inline-block;margin-right:5px;}
 
+/* REPORT CHOICE MODAL */
+.choice-modal{background:var(--dk2);border:1.5px solid var(--y);border-radius:14px;padding:32px 28px;max-width:500px;width:92%;max-height:92vh;overflow-y:auto;}
+.choice-modal h3{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;color:var(--y);margin-bottom:6px;}
+.choice-modal p{font-size:13px;color:var(--mu);margin-bottom:24px;line-height:1.5;}
+.choice-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;}
+@media(max-width:480px){.choice-cards{grid-template-columns:1fr;}}
+.choice-card{background:var(--dk3);border:2px solid var(--dk4);border-radius:10px;padding:20px 16px;cursor:pointer;text-align:center;transition:all .18s;position:relative;}
+.choice-card:hover{border-color:var(--y);background:rgba(245,197,24,.05);transform:translateY(-2px);}
+.choice-card.ai-card:hover{border-color:var(--or);}
+.choice-card .card-icon{font-size:36px;margin-bottom:10px;display:block;}
+.choice-card .card-title{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1.5px;color:var(--lt);margin-bottom:6px;}
+.choice-card .card-desc{font-size:11px;color:var(--mu);line-height:1.5;}
+.choice-card .card-badge{position:absolute;top:-8px;right:10px;background:var(--or);color:#fff;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;letter-spacing:.5px;}
+.choice-card.ai-card .card-title{color:var(--y);}
+.choice-dismiss{font-size:12px;color:var(--mu);text-align:center;cursor:pointer;text-decoration:underline;}
+.choice-dismiss:hover{color:var(--lt);}
+
 /* MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:none;align-items:center;justify-content:center;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:999;display:none;align-items:center;justify-content:center;padding:16px;}
 .modal-overlay.show{display:flex;}
 .modal{background:var(--dk2);border:1.5px solid var(--y);border-radius:12px;padding:28px;max-width:440px;width:90%;max-height:85vh;overflow-y:auto;}
 .modal h3{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--y);margin-bottom:16px;letter-spacing:1.5px;}
@@ -361,7 +378,7 @@ textarea{resize:vertical;}
     <button class="btn btn-or btn-rec" id="recordBtn" onclick="toggleRecord()">
       <div class="mic-dot"></div> Record Voice
     </button>
-    <button class="btn btn-y" id="generateBtn" onclick="generateReport()">⚡ Generate Full Report</button>
+    <button class="btn btn-y" id="generateBtn" onclick="openGenerateModal()">⚡ Generate Full Report</button>
     <button class="btn btn-ghost" onclick="clearNotes()">Clear</button>
   </div>
 
@@ -442,7 +459,7 @@ textarea{resize:vertical;}
   <div class="report-head">
     <div class="report-title">Generated Report</div>
     <div class="report-actions">
-      <button class="btn btn-ghost btn-sm" onclick="generateReport()">↺ Regenerate</button>
+      <button class="btn btn-ghost btn-sm" onclick="openGenerateModal()">↺ Regenerate</button>
       <button class="btn btn-gr btn-sm" onclick="copyReport()">⎘ Copy Text</button>
       <button class="btn btn-gr btn-sm" onclick="downloadReport()">↓ Download</button>
       <button class="btn btn-y btn-sm" onclick="sendEmail()">✉ Send Email</button>
@@ -456,6 +473,33 @@ textarea{resize:vertical;}
 </div>
 
 </div><!-- /container -->
+
+<!-- REPORT TYPE CHOICE MODAL -->
+<div class="modal-overlay" id="choiceModal">
+  <div class="choice-modal">
+    <h3>Generate Report</h3>
+    <p>Choose how to generate your daily report. Both options will email the report to the address you configured.</p>
+    <div class="choice-cards">
+
+      <!-- Plain / As-Filled -->
+      <div class="choice-card" onclick="generatePlainReport()">
+        <span class="card-icon">📋</span>
+        <div class="card-title">As-Filled Report</div>
+        <div class="card-desc">Compiles all your entries exactly as entered into a structured, professionally formatted report.<br><br>✅ No API key needed<br>✅ Works offline<br>✅ Instant — no wait</div>
+      </div>
+
+      <!-- AI-Generated -->
+      <div class="choice-card ai-card" onclick="generateAIReport()">
+        <span class="card-badge">AI POWERED</span>
+        <span class="card-icon">⚡</span>
+        <div class="card-title">AI Professional Report</div>
+        <div class="card-desc">Claude AI rewrites your rough notes into formal construction language with full narrative sections.<br><br>⚡ Requires API key<br>⚡ Requires internet<br>⚡ ~10 seconds</div>
+      </div>
+
+    </div>
+    <div class="choice-dismiss" onclick="document.getElementById('choiceModal').classList.remove('show')">Cancel — go back</div>
+  </div>
+</div>
 
 <!-- BULK LABOR MODAL -->
 <div class="modal-overlay" id="bulkModal">
@@ -1126,37 +1170,174 @@ function clearSig(role){
 }
 
 // ═══════════════════════════════════════════════════════
-// REPORT GENERATION
+// REPORT GENERATION — MODAL + TWO PATHS
 // ═══════════════════════════════════════════════════════
-async function generateReport(){
-  if(!apiKey){ document.getElementById('noKeyWarn').classList.add('show'); return; }
-  const notes = v('voiceText').trim();
-  if(!notes){ alert('Please enter site notes first.'); return; }
-  
-  if(!navigator.onLine){
-    // Queue for later
-    saveToQueue();
-    showStatus('⚡ Offline — report queued. Will generate & email when online.', false);
+
+function openGenerateModal(){
+  document.getElementById('choiceModal').classList.add('show');
+}
+
+// ── PATH A: Plain / As-Filled ────────────────────────────
+function generatePlainReport(){
+  document.getElementById('choiceModal').classList.remove('show');
+
+  // Gather all data
+  const project   = v('project')   || 'N/A';
+  const engineer  = v('engineer')  || 'N/A';
+  const reportDate= v('reportDate')|| '';
+  const shift     = v('shift')     || 'Day';
+  const workers   = v('workers')   || 'N/A';
+  const progress  = v('progress')  || 'N/A';
+  const wind      = v('windSpeed') ? v('windSpeed') + ' mph' : 'N/A';
+  const temp      = v('temp')      ? v('temp') + '°F'       : 'N/A';
+  const notes     = v('voiceText') || '(No notes entered)';
+  const gpsStr    = gpsCoords ? gpsCoords.lat + ', ' + gpsCoords.lng + '  (±' + gpsCoords.acc + 'm)' : 'Not captured';
+
+  const line52 = '═'.repeat(52);
+  const line52d = '─'.repeat(52);
+
+  // ── Header ──
+  let report = [
+    'CONSTRUCTION DAILY REPORT',
+    line52,
+    'Project:  ' + project,
+    'Date:     ' + reportDate + '     Shift: ' + shift,
+    'Engineer: ' + engineer,
+    'GPS:      ' + gpsStr,
+    'Workers:  ' + workers + '   Progress: ' + progress + '%',
+    'Weather:  ' + (weatherVal || 'N/A') + '   Wind: ' + wind + '   Temp: ' + temp,
+    line52,
+    ''
+  ].join('\n');
+
+  // ── Sections (only toggled-on) ──
+  const sectionMap = {
+    work:      'WORK COMPLETED',
+    safety:    'SAFETY & HSE OBSERVATIONS',
+    resources: 'RESOURCES & EQUIPMENT',
+    delays:    'DELAYS & ISSUES',
+    quality:   'QUALITY CONTROL & INSPECTIONS',
+    plan:      'PLAN FOR TOMORROW'
+  };
+
+  // For plain report, site notes go under Work Completed (or all toggled sections)
+  const activeKeys = [...selectedSections];
+  if(activeKeys.length > 0){
+    // Put notes under first active section, mark others as reported via notes
+    const firstKey = activeKeys[0];
+    report += '## ' + sectionMap[firstKey] + '\n';
+    report += notes + '\n\n';
+    activeKeys.slice(1).forEach(function(key){
+      report += '## ' + sectionMap[key] + '\n';
+      report += '(See field notes above / Not separately reported)\n\n';
+    });
+  } else {
+    report += '## FIELD NOTES\n' + notes + '\n\n';
+  }
+
+  // ── Equipment Register ──
+  report += line52d + '\n## EQUIPMENT REGISTER\n' + line52d + '\n';
+  const eqFiltered = equipmentList.filter(function(e){ return e.name; });
+  if(eqFiltered.length === 0){
+    report += 'No equipment logged.\n';
+  } else {
+    eqFiltered.forEach(function(e, i){
+      report += '\n  ' + (i+1) + '. Equipment ID: ' + (e.eqId || 'N/A') + '\n';
+      report += '     Name/Type:    ' + e.name + '\n';
+      if(e.isVehicle){
+        report += '     Make/Model:   ' + (e.make || 'N/A') + '\n';
+        report += '     License Plate:' + (e.plate || 'N/A') + '\n';
+      }
+      report += '     Status:       ' + e.status + '\n';
+      if(e.status === 'Idle'){
+        report += '     Idle Time:    ' + (e.idleHrs || 0) + 'h ' + (e.idleMins || 0) + 'm\n';
+        if(e.idleReason) report += '     Idle Reason:  ' + e.idleReason + '\n';
+      }
+    });
+  }
+  report += '\n';
+
+  // ── Labor Compliance Register ──
+  report += line52d + '\n## LABOR COMPLIANCE REGISTER\n' + line52d + '\n';
+  const lbFiltered = laborList.filter(function(l){ return l.name; });
+  if(lbFiltered.length === 0){
+    report += 'No workers logged.\n';
+  } else {
+    // Header row
+    report += '\n  #   Legal Full Name              Role / Trade         Company\n';
+    report += '  ' + '─'.repeat(74) + '\n';
+    lbFiltered.forEach(function(l, i){
+      const num  = String(i+1).padEnd(3);
+      const name = (l.name || '').padEnd(30).substring(0,30);
+      const role = (l.role || 'N/A').padEnd(20).substring(0,20);
+      const comp = l.company || 'N/A';
+      report += '  ' + num + ' ' + name + ' ' + role + ' ' + comp + '\n';
+    });
+    report += '\n  Total workers on site: ' + lbFiltered.length + '\n';
+  }
+  report += '\n';
+
+  // ── Photo Log ──
+  if(photos.length > 0){
+    report += line52d + '\n## PHOTO LOG\n' + line52d + '\n';
+    photos.forEach(function(p, i){
+      const cat = p.category.charAt(0).toUpperCase() + p.category.slice(1);
+      report += '\n  Photo ' + (i+1) + ' [' + cat + ']: ' + (p.caption || '(No caption)') + '\n';
+    });
+    report += '\n';
+  }
+
+  // ── Sign-Off Block ──
+  report += line52d + '\nSIGNATURES & SIGN-OFF\n' + line52d + '\n\n';
+  report += 'Field Inspector (Owner):\n';
+  report += '  Name: ' + (v('inspectorName') || '________________________________') + '\n';
+  report += '  Date: ' + reportDate + '\n';
+  report += '  Signature: [See digital signature below]\n\n';
+  report += 'Contractor Superintendent:\n';
+  report += '  Name: ' + (v('superintendentName') || '________________________________') + '\n';
+  report += '  Date: ' + reportDate + '\n';
+  report += '  Signature: [See digital signature below]\n\n';
+  report += line52 + '\n';
+  report += 'Report generated by SiteLog AI  ·  ' + new Date().toLocaleString() + '\n';
+
+  // Render & email
+  renderReport(report, false);
+  if(emailTo) sendEmailAPI(report);
+}
+
+// ── PATH B: AI-Generated ─────────────────────────────────
+async function generateAIReport(){
+  document.getElementById('choiceModal').classList.remove('show');
+
+  if(!apiKey){
+    document.getElementById('noKeyWarn').classList.add('show');
+    document.getElementById('noKeyWarn').scrollIntoView({behavior:'smooth', block:'center'});
+    // Show an informative message
+    showStatus('⚠ API key required for AI report. Scroll up to Configuration to add it, or choose "As-Filled Report".', false);
+    setTimeout(hideStatus, 6000);
     return;
   }
-  
-  showStatus('AI is writing your report...', true);
-  document.getElementById('generateBtn').disabled = true;
-  
-  try {
-    const result = await callAI(buildPrompt());
-    const reportText = result;
-    renderReport(reportText);
-    
-    // Auto-email if address set
-    if(emailTo){
-      await sendEmailAPI(reportText);
-    }
-  } catch(err){
-    showStatus('✗ Error: '+err.message, false);
-    setTimeout(()=>hideStatus(),4000);
+  const notes = v('voiceText').trim();
+  if(!notes){ alert('Please enter site notes before generating a report.'); return; }
+
+  if(!navigator.onLine){
+    saveToQueue();
+    showStatus('⚡ Offline — AI report queued. Will generate & email when internet is restored.', false);
+    return;
   }
-  
+
+  showStatus('Claude AI is writing your report…', true);
+  document.getElementById('generateBtn').disabled = true;
+
+  try {
+    const aiText = await callAI(buildPrompt());
+    renderReport(aiText, true);
+    if(emailTo) await sendEmailAPI(document.getElementById('reportContent').textContent);
+  } catch(err){
+    showStatus('✗ AI Error: ' + err.message, false);
+    setTimeout(hideStatus, 5000);
+  }
+
   document.getElementById('generateBtn').disabled = false;
   hideStatus();
 }
@@ -1232,40 +1413,50 @@ async function callAI(prompt){
   return data.content.map(b=>b.text||'').join('');
 }
 
-function renderReport(text){
+function renderReport(text, isAI){
   const project = v('project')||'Project';
   const engineer = v('engineer')||'N/A';
   const reportDate = v('reportDate');
   const progress = v('progress')||'N/A';
   const workers = v('workers')||'N/A';
-  const gpsStr = gpsCoords ? `${gpsCoords.lat}, ${gpsCoords.lng}` : 'N/A';
-  
-  const header = `CONSTRUCTION DAILY REPORT
-${'═'.repeat(52)}
-Project:  ${project}
-Date:     ${reportDate}     Shift: ${v('shift')||'Day'}
-Engineer: ${engineer}
-GPS:      ${gpsStr}
-Workers:  ${workers}   Progress: ${progress}%
-Weather:  ${weatherVal||'N/A'}   Wind: ${v('windSpeed')||'N/A'} mph   Temp: ${v('temp')||'N/A'}°F
-${'═'.repeat(52)}
+  const gpsStr = gpsCoords ? gpsCoords.lat + ', ' + gpsCoords.lng : 'N/A';
 
-`;
-  
-  // Photo log text
-  let photoLog = '';
-  if(photos.length > 0){
-    photoLog = '\n\n## Photo Log\n';
-    photos.forEach((p,i)=>{
-      photoLog += `Photo ${i+1} [${p.category.charAt(0).toUpperCase()+p.category.slice(1)}]: ${p.caption||'(No caption)'}\n`;
-    });
+  let fullText;
+  if(isAI){
+    // AI path: prepend the standard header block to AI-generated body
+    const header = [
+      'CONSTRUCTION DAILY REPORT',
+      '═'.repeat(52),
+      'Project:  ' + project,
+      'Date:     ' + reportDate + '     Shift: ' + (v('shift')||'Day'),
+      'Engineer: ' + engineer,
+      'GPS:      ' + gpsStr,
+      'Workers:  ' + workers + '   Progress: ' + progress + '%',
+      'Weather:  ' + (weatherVal||'N/A') + '   Wind: ' + (v('windSpeed')||'N/A') + ' mph   Temp: ' + (v('temp')||'N/A') + '°F',
+      '═'.repeat(52),
+      ''
+    ].join('\n');
+
+    let photoLog = '';
+    if(photos.length > 0){
+      photoLog = '\n\n## Photo Log\n';
+      photos.forEach(function(p,i){
+        photoLog += 'Photo '+(i+1)+' ['+p.category.charAt(0).toUpperCase()+p.category.slice(1)+']: '+(p.caption||'(No caption)')+'\n';
+      });
+    }
+
+    const sigBlock = '\n\n' + '─'.repeat(52) + '\nSIGNATURES\n' + '─'.repeat(52) +
+      '\nField Inspector (Owner): ' + (v('inspectorName')||'___________________') + '    Date: ' + reportDate +
+      '\n\nContractor Superintendent: ' + (v('superintendentName')||'___________________') + '    Date: ' + reportDate + '\n';
+
+    fullText = header + text + photoLog + sigBlock;
+  } else {
+    // Plain path: text is already the fully assembled report string
+    fullText = text;
   }
-  
-  const sigBlock = `\n\n${'─'.repeat(52)}\nSIGNATURES\n${'─'.repeat(52)}\nField Inspector (Owner): ${v('inspectorName')||'___________________'}    Date: ${reportDate}\n\nContractor Superintendent: ${v('superintendentName')||'___________________'}    Date: ${reportDate}\n`;
-  
-  const fullText = header + text + photoLog + sigBlock;
+
   document.getElementById('reportContent').textContent = fullText;
-  
+
   // Photo thumbnails in report
   const pa = document.getElementById('reportPhotoArea');
   pa.innerHTML = '';
