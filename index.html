@@ -357,7 +357,7 @@ textarea{resize:vertical;}
 <!-- SITE NOTES (AI voice) -->
 <div class="voice-hero">
   <div class="vt">Today's Site Notes</div>
-  <div class="vs">Speak or type rough notes in any language — AI translates &amp; structures the full report</div>
+  <div class="vs">Tap 🎙 to record — text appears live as you speak. Or type rough notes in any language.</div>
 
   <!-- Language selector -->
   <div style="margin-bottom:12px;">
@@ -371,7 +371,7 @@ textarea{resize:vertical;}
   </div>
 
   <div class="voice-area">
-    <textarea id="voiceText" placeholder="e.g. Poured 40m³ concrete on columns C1-C8, done at noon. 2hr delay — mixer broke. Safety near-miss at scaffolding..." oninput="autosave()"></textarea>
+    <textarea id="voiceText" placeholder="Tap 🎙 Record Voice — words appear here live as you speak. Or type rough notes here. e.g. Poured 40m³ concrete on columns C1-C8, done at noon. 2hr delay — mixer broke..." oninput="autosave()"></textarea>
   </div>
 
   <div class="voice-controls">
@@ -529,7 +529,6 @@ let equipmentList = [];
 let laborList = [];
 let gpsCoords = null;
 let isRecording = false;
-let mediaRecorder, audioChunks = [];
 let offlineQueue = [];
 let autosaveTimer = null;
 let sigData = { Inspector: null, Superintendent: null };
@@ -935,32 +934,119 @@ function setLangByCode(lang){
 }
 
 // ═══════════════════════════════════════════════════════
-// VOICE RECORDING
+// VOICE RECORDING — Web Speech API (real-time, on-device)
 // ═══════════════════════════════════════════════════════
-async function toggleRecord(){
-  if(!isRecording){
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-      mediaRecorder = new MediaRecorder(stream);
-      audioChunks = [];
-      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-      mediaRecorder.onstop = () => {
-        const langNote = inputLang !== 'en' ? ` (recorded in ${inputLang})` : '';
-        document.getElementById('voiceText').placeholder = `🎙 Voice recorded${langNote} — add any text notes, then Generate Report`;
-      };
-      mediaRecorder.start();
-      isRecording = true;
-      const btn = document.getElementById('recordBtn');
-      btn.classList.add('recording');
-      btn.innerHTML = '<div class="mic-dot"></div> Recording... (tap to stop)';
-    } catch(e){ alert('Microphone unavailable. Type notes instead.'); }
-  } else {
-    mediaRecorder.stop();
+// Uses the browser's built-in SpeechRecognition — works in
+// Chrome (desktop + Android) and Safari 14.1+ (iOS/macOS).
+// No API key needed. Transcription happens live as you speak.
+
+let speechRecognition = null;
+let speechFinalText   = '';   // committed final segments
+let speechInterim     = '';   // current in-progress segment
+
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function toggleRecord(){
+  const btn = document.getElementById('recordBtn');
+  const ta  = document.getElementById('voiceText');
+
+  // ── STOP ──────────────────────────────────────────────
+  if(isRecording){
     isRecording = false;
-    const btn = document.getElementById('recordBtn');
+    if(speechRecognition) speechRecognition.stop();
     btn.classList.remove('recording');
     btn.innerHTML = '<div class="mic-dot"></div> Record Voice';
-    mediaRecorder.stream.getTracks().forEach(t=>t.stop());
+    // Flush any remaining interim text into the textarea
+    if(speechInterim.trim()){
+      ta.value = (ta.value ? ta.value.trimEnd() + ' ' : '') + speechInterim.trim();
+      speechInterim = '';
+    }
+    autosave();
+    showStatus('✓ Voice recording saved', false);
+    setTimeout(hideStatus, 2000);
+    return;
+  }
+
+  // ── Browser support check ──────────────────────────────
+  if(!SpeechRecognitionAPI){
+    // Fallback: MediaRecorder with clear instructions
+    alert('Live voice transcription is not supported in this browser.\n\nFor voice-to-text, please use:\n• Chrome on Android or Desktop\n• Safari on iPhone/iPad (iOS 14.1+)\n\nOr type your notes directly into the text box.');
+    return;
+  }
+
+  // ── START ──────────────────────────────────────────────
+  const langCodes = { en:'en-US', es:'es-MX', zh:'zh-CN', vi:'vi-VN' };
+
+  speechFinalText = '';
+  speechInterim   = '';
+
+  speechRecognition = new SpeechRecognitionAPI();
+  speechRecognition.continuous      = true;   // keep listening until stopped
+  speechRecognition.interimResults  = true;   // show words as they're spoken
+  speechRecognition.lang            = langCodes[inputLang] || 'en-US';
+  speechRecognition.maxAlternatives = 1;
+
+  speechRecognition.onstart = function(){
+    isRecording = true;
+    btn.classList.add('recording');
+    btn.innerHTML = '<div class="mic-dot"></div> Recording… (tap to stop)';
+    showStatus('🎙 Listening — speak your site notes…', false);
+  };
+
+  speechRecognition.onresult = function(event){
+    let interimBuild = '';
+    for(let i = event.resultIndex; i < event.results.length; i++){
+      const segment = event.results[i][0].transcript;
+      if(event.results[i].isFinal){
+        // Capitalise first letter, ensure ends with punctuation
+        let clean = segment.trim();
+        if(clean && !/[.!?]$/.test(clean)) clean += '.';
+        clean = clean.charAt(0).toUpperCase() + clean.slice(1);
+        speechFinalText += (speechFinalText ? ' ' : '') + clean;
+      } else {
+        interimBuild += segment;
+      }
+    }
+    speechInterim = interimBuild;
+
+    // Live preview — show committed text + grey interim
+    const existing = ta.dataset.preVoice || '';  // text that existed before recording
+    const live = speechFinalText + (speechInterim ? ' ' + speechInterim : '');
+    ta.value = existing + (existing && live ? ' ' : '') + live;
+  };
+
+  speechRecognition.onerror = function(event){
+    // 'no-speech' is harmless — just waiting for voice
+    if(event.error === 'no-speech') return;
+    if(event.error === 'not-allowed' || event.error === 'service-not-allowed'){
+      showStatus('⚠ Microphone permission denied — allow mic access and try again', false);
+    } else {
+      showStatus('⚠ Voice recognition error: ' + event.error + ' — type notes manually', false);
+    }
+    setTimeout(hideStatus, 5000);
+    // Clean up
+    isRecording = false;
+    btn.classList.remove('recording');
+    btn.innerHTML = '<div class="mic-dot"></div> Record Voice';
+  };
+
+  speechRecognition.onend = function(){
+    // Auto-restart if we're still supposed to be recording (handles mobile timeouts)
+    if(isRecording){
+      try { speechRecognition.start(); } catch(e){ /* already started */ }
+    } else {
+      hideStatus();
+    }
+  };
+
+  // Save whatever is currently in the textarea before we start appending to it
+  ta.dataset.preVoice = ta.value;
+
+  try {
+    speechRecognition.start();
+  } catch(e){
+    alert('Could not start voice recognition: ' + e.message);
+    isRecording = false;
   }
 }
 
@@ -1178,8 +1264,20 @@ function openGenerateModal(){
 }
 
 // ── PATH A: Plain / As-Filled ────────────────────────────
-function generatePlainReport(){
+async function generatePlainReport(){
   document.getElementById('choiceModal').classList.remove('show');
+
+  // If recording is still active, stop it cleanly first
+  if(isRecording){
+    isRecording = false;
+    if(speechRecognition) speechRecognition.stop();
+    const btn = document.getElementById('recordBtn');
+    btn.classList.remove('recording');
+    btn.innerHTML = '<div class="mic-dot"></div> Record Voice';
+    // Small pause so final speech result event can fire
+    await new Promise(r => setTimeout(r, 400));
+    autosave();
+  }
 
   // Gather all data
   const project   = v('project')   || 'N/A';
@@ -1312,13 +1410,29 @@ async function generateAIReport(){
   if(!apiKey){
     document.getElementById('noKeyWarn').classList.add('show');
     document.getElementById('noKeyWarn').scrollIntoView({behavior:'smooth', block:'center'});
-    // Show an informative message
     showStatus('⚠ API key required for AI report. Scroll up to Configuration to add it, or choose "As-Filled Report".', false);
     setTimeout(hideStatus, 6000);
     return;
   }
+
+  // If recording is still in progress, stop it cleanly first
+  if(isRecording){
+    isRecording = false;
+    if(speechRecognition) speechRecognition.stop();
+    const btn = document.getElementById('recordBtn');
+    btn.classList.remove('recording');
+    btn.innerHTML = '<div class="mic-dot"></div> Record Voice';
+    await new Promise(r => setTimeout(r, 400));
+    autosave();
+  }
+
+  // Allow generation even with no typed notes — voice transcript may be the only input,
+  // or the inspector may be relying entirely on equipment/labor/photo data.
   const notes = v('voiceText').trim();
-  if(!notes){ alert('Please enter site notes before generating a report.'); return; }
+  const hasData = notes || equipmentList.some(e=>e.name) || laborList.some(l=>l.name) || photos.length > 0;
+  if(!hasData){
+    if(!confirm('No notes, equipment, labor, or photos have been entered. Generate a report anyway?')) return;
+  }
 
   if(!navigator.onLine){
     saveToQueue();
