@@ -498,7 +498,7 @@ document.getElementById('dateBadge').textContent = now.toDateString();
 document.getElementById('reportDate').value = now.toISOString().split('T')[0];
 
 // Load saved config
-(function init(){
+window.addEventListener('DOMContentLoaded', function(){
   const cfg = JSON.parse(localStorage.getItem('sitelog_config') || '{}');
   if(cfg.apiKey){ apiKey = cfg.apiKey; document.getElementById('apiKey').value = '••••••••'; }
   if(cfg.emailTo){ emailTo = cfg.emailTo; document.getElementById('emailTo').value = cfg.emailTo; }
@@ -518,11 +518,11 @@ document.getElementById('reportDate').value = now.toISOString().split('T')[0];
   window.addEventListener('online', () => { updateOnlineStatus(); processQueue(); });
   window.addEventListener('offline', updateOnlineStatus);
   
-  // GPS
+  // GPS — try immediately (works on Android); iOS needs user gesture so also wire the badge button
   getGPS();
   
   // Default equipment & labor rows
-  addEquipment();
+  addEquipment(false);
   addLabor();
   addLabor();
   
@@ -535,7 +535,7 @@ document.getElementById('reportDate').value = now.toISOString().split('T')[0];
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
   dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handlePhotos(e.dataTransfer.files); });
-})();
+});
 
 // ═══════════════════════════════════════════════════════
 // ONLINE / OFFLINE
@@ -597,14 +597,15 @@ function loadSavedDraft(){
   if(draft.gpsCoords) gpsCoords = draft.gpsCoords;
   if(draft.inputLang) setLangByCode(draft.inputLang);
   // Reload equipment
-  equipmentList = draft.equipmentList || [];
   document.getElementById('eqList').innerHTML = '';
   equipmentList = [];
-  (draft.equipmentList||[]).forEach(eq => addEquipment(eq.isVehicle, eq));
+  eqCounter = 0;
+  (draft.equipmentList||[]).forEach(function(eq){ addEquipment(eq.isVehicle === true, eq); });
   // Reload labor
   laborList = [];
   document.getElementById('laborList').innerHTML = '';
-  (draft.laborList||[]).forEach(lb => addLaborRow(lb));
+  lbCounter = 0;
+  (draft.laborList||[]).forEach(function(lb){ addLaborRow(lb); });
   
   updateGPSDisplay();
   alert('Draft loaded ✓');
@@ -636,25 +637,49 @@ function saveConfig(){
 // GPS
 // ═══════════════════════════════════════════════════════
 function getGPS(){
-  if(!navigator.geolocation){ document.getElementById('gpsDisplay').textContent = 'GPS not supported'; return; }
+  const display = document.getElementById('gpsDisplay');
+  const badge = document.getElementById('gpsBadge');
+  if(!navigator.geolocation){
+    display.textContent = 'GPS not supported by this browser';
+    badge.textContent = '📍 No GPS';
+    return;
+  }
+  badge.textContent = '📍 Getting GPS...';
+  display.textContent = 'Acquiring — please allow location access if prompted...';
   navigator.geolocation.getCurrentPosition(
-    pos => {
-      gpsCoords = { lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6), acc: Math.round(pos.coords.accuracy) };
+    function(pos){
+      gpsCoords = {
+        lat: pos.coords.latitude.toFixed(6),
+        lng: pos.coords.longitude.toFixed(6),
+        acc: Math.round(pos.coords.accuracy)
+      };
       updateGPSDisplay();
-      document.getElementById('gpsBadge').textContent = '📍 GPS ✓';
+      badge.textContent = '📍 GPS ✓ (tap to refresh)';
       autosave();
     },
-    err => {
-      document.getElementById('gpsDisplay').textContent = 'GPS unavailable — enable location access';
-      document.getElementById('gpsBadge').textContent = '📍 No GPS';
+    function(err){
+      let msg = 'GPS error — tap 📍 to retry';
+      if(err.code === 1) msg = 'Location denied — tap 📍 button & allow access';
+      if(err.code === 2) msg = 'Location unavailable — check GPS signal';
+      if(err.code === 3) msg = 'GPS timed out — tap 📍 to retry';
+      display.textContent = msg;
+      badge.textContent = '📍 Tap to get GPS';
+      badge.style.color = 'var(--or)';
+      badge.style.borderColor = 'var(--or)';
     },
-    { enableHighAccuracy: true, timeout: 10000 }
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
   );
 }
-function refreshGPS(){ document.getElementById('gpsBadge').textContent = '📍 Updating...'; getGPS(); }
+function refreshGPS(){
+  document.getElementById('gpsBadge').style.color = '';
+  document.getElementById('gpsBadge').style.borderColor = '';
+  document.getElementById('gpsBadge').textContent = '📍 Updating...';
+  getGPS();
+}
 function updateGPSDisplay(){
   if(!gpsCoords) return;
-  document.getElementById('gpsDisplay').textContent = `${gpsCoords.lat}, ${gpsCoords.lng}  (±${gpsCoords.acc}m)`;
+  document.getElementById('gpsDisplay').textContent =
+    gpsCoords.lat + ', ' + gpsCoords.lng + '  (±' + gpsCoords.acc + 'm)';
 }
 
 // ═══════════════════════════════════════════════════════
@@ -668,19 +693,31 @@ function setWeather(btn, val){
 }
 
 async function fetchWind(){
-  if(!gpsCoords){ alert('GPS required to auto-fetch wind. Enable location access.'); return; }
-  document.getElementById('windAuto').textContent = 'Fetching...';
+  if(!gpsCoords){
+    // Try getting GPS first, then retry
+    alert('Tap the 📍 GPS button first to get your location, then try again.');
+    return;
+  }
+  const windAutoEl = document.getElementById('windAuto');
+  windAutoEl.textContent = 'Fetching weather data...';
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${gpsCoords.lat}&longitude=${gpsCoords.lng}&current_weather=true&wind_speed_unit=mph`;
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + gpsCoords.lat +
+      '&longitude=' + gpsCoords.lng +
+      '&current=temperature_2m,wind_speed_10m,wind_direction_10m' +
+      '&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto';
     const res = await fetch(url);
     const data = await res.json();
-    const ws = data.current_weather?.windspeed || '--';
-    const wd = data.current_weather?.winddirection || '--';
-    document.getElementById('windSpeed').value = Math.round(ws);
-    document.getElementById('windAuto').textContent = `✓ Live: ${ws} mph, direction ${wd}°`;
+    const cur = data.current || {};
+    const ws = cur.wind_speed_10m !== undefined ? Math.round(cur.wind_speed_10m) : null;
+    const wd = cur.wind_direction_10m !== undefined ? Math.round(cur.wind_direction_10m) : null;
+    const temp = cur.temperature_2m !== undefined ? Math.round(cur.temperature_2m) : null;
+    if(ws !== null) document.getElementById('windSpeed').value = ws;
+    if(temp !== null) document.getElementById('temp').value = temp;
+    windAutoEl.textContent = '✓ Live data: Wind ' + (ws||'--') + ' mph @ ' + (wd||'--') + '° · Temp ' + (temp||'--') + '°F';
     autosave();
-  } catch(e) {
-    document.getElementById('windAuto').textContent = 'Could not fetch — enter manually';
+  } catch(e){
+    windAutoEl.textContent = '⚠ Could not fetch weather — enter manually';
+    console.error('Weather fetch error:', e);
   }
 }
 
@@ -688,7 +725,10 @@ async function fetchWind(){
 // EQUIPMENT
 // ═══════════════════════════════════════════════════════
 let eqCounter = 0;
-function addEquipment(isVehicle=false, prefill=null){
+function addEquipment(isVehicle, prefillData){
+  // isVehicle: boolean (true/false/undefined). prefillData: object or undefined.
+  if(typeof isVehicle !== 'boolean') isVehicle = false;
+  const prefill = (prefillData && typeof prefillData === 'object') ? prefillData : null;
   const id = ++eqCounter;
   const eq = prefill || { id, eqId:'', name:'', isVehicle, make:'', model:'', plate:'', status:'Active', idleHrs:0, idleMins:0 };
   if(!prefill) equipmentList.push(eq);
@@ -769,7 +809,8 @@ function removeEq(id){
 // ═══════════════════════════════════════════════════════
 let lbCounter = 0;
 function addLabor(){ addLaborRow(null); }
-function addLaborRow(prefill){
+function addLaborRow(prefillData){
+  const prefill = (prefillData && typeof prefillData === 'object') ? prefillData : null;
   const id = ++lbCounter;
   const lb = prefill || { id, name:'', role:'', company:'' };
   if(!prefill) laborList.push(lb);
@@ -814,7 +855,7 @@ function removeLb(id){
 function addLaborBulk(){ document.getElementById('bulkModal').classList.add('show'); }
 function processBulkLabor(){
   const lines = document.getElementById('bulkText').value.trim().split('\n');
-  lines.forEach(line => {
+  lines.forEach(function(line){
     const parts = line.split(',');
     if(!parts[0].trim()) return;
     const lb = { id: ++lbCounter, name: parts[0].trim(), role: (parts[1]||'').trim(), company: (parts[2]||'').trim() };
@@ -987,60 +1028,100 @@ async function captionPhoto(id){
 async function captionAll(){ for(const p of photos) await captionPhoto(p.id); }
 
 // ═══════════════════════════════════════════════════════
-// SIGNATURES
+// SIGNATURES — Fixed for mobile (pointer events + DPR scaling)
 // ═══════════════════════════════════════════════════════
 function setupSig(role){
   const canvas = document.getElementById('canvas'+role);
+  
+  // Scale canvas for device pixel ratio (fixes blur on Retina/mobile screens)
+  const dpr = window.devicePixelRatio || 1;
+  const displayW = canvas.offsetWidth || 400;
+  const displayH = canvas.offsetHeight || 130;
+  canvas.width = displayW * dpr;
+  canvas.height = displayH * dpr;
+  canvas.style.width = displayW + 'px';
+  canvas.style.height = displayH + 'px';
+  
   const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
   ctx.fillStyle = '#1A1A1A';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillRect(0, 0, displayW, displayH);
   ctx.strokeStyle = '#F2EDE4';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.5;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   
-  let drawing = false, lastX=0, lastY=0;
+  let drawing = false;
+  let lastX = 0, lastY = 0;
   
-  function getPos(e, canvas){
+  function getPos(e){
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    if(e.touches){
-      return { x:(e.touches[0].clientX - rect.left)*scaleX, y:(e.touches[0].clientY - rect.top)*scaleY };
+    // pointer events give clientX/Y directly
+    if(e.clientX !== undefined){
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
-    return { x:(e.clientX - rect.left)*scaleX, y:(e.clientY - rect.top)*scaleY };
+    // fallback touch
+    if(e.touches && e.touches[0]){
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+    }
+    return { x: 0, y: 0 };
   }
   
-  function start(e){ e.preventDefault(); drawing=true; const p=getPos(e,canvas); lastX=p.x; lastY=p.y; }
-  function draw(e){
-    if(!drawing) return; e.preventDefault();
-    const p=getPos(e,canvas);
-    ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke();
-    lastX=p.x; lastY=p.y;
-    document.getElementById('sigStatus'+role).textContent = '✓ Signed';
-    document.getElementById('sigStatus'+role).style.color = 'var(--gr)';
+  function onStart(e){
+    e.preventDefault();
+    drawing = true;
+    canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+    const p = getPos(e);
+    lastX = p.x; lastY = p.y;
+  }
+  function onMove(e){
+    if(!drawing) return;
+    e.preventDefault();
+    const p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    lastX = p.x; lastY = p.y;
+    const statusEl = document.getElementById('sigStatus'+role);
+    statusEl.textContent = '✓ Signed';
+    statusEl.style.color = 'var(--gr)';
     sigData[role] = canvas.toDataURL();
-    autosave();
   }
-  function stop(){ drawing=false; }
+  function onEnd(e){
+    drawing = false;
+  }
   
-  canvas.addEventListener('mousedown', start);
-  canvas.addEventListener('mousemove', draw);
-  canvas.addEventListener('mouseup', stop);
-  canvas.addEventListener('mouseleave', stop);
-  canvas.addEventListener('touchstart', start, {passive:false});
-  canvas.addEventListener('touchmove', draw, {passive:false});
-  canvas.addEventListener('touchend', stop);
+  // Use pointer events (covers mouse + touch + stylus on all modern mobile browsers)
+  canvas.addEventListener('pointerdown', onStart);
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', onEnd);
+  canvas.addEventListener('pointercancel', onEnd);
+  canvas.addEventListener('pointerleave', onEnd);
+  
+  // Prevent page scroll while signing on touch devices
+  canvas.addEventListener('touchstart', function(e){ e.preventDefault(); }, {passive:false});
+  canvas.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
 }
 
 function clearSig(role){
   const canvas = document.getElementById('canvas'+role);
   const ctx = canvas.getContext('2d');
+  // Clear respecting the DPR scale already applied
+  ctx.setTransform(1,0,0,1,0,0);
   ctx.fillStyle = '#1A1A1A';
   ctx.fillRect(0,0,canvas.width,canvas.height);
+  // Re-apply DPR scale
+  const dpr = window.devicePixelRatio || 1;
+  ctx.scale(dpr, dpr);
+  ctx.strokeStyle = '#F2EDE4';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   sigData[role] = null;
-  document.getElementById('sigStatus'+role).textContent = 'Not signed';
-  document.getElementById('sigStatus'+role).style.color = '';
+  const statusEl = document.getElementById('sigStatus'+role);
+  statusEl.textContent = 'Not signed';
+  statusEl.style.color = '';
   autosave();
 }
 
