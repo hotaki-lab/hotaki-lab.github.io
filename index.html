@@ -236,14 +236,14 @@ textarea{resize:vertical;}
 </div>
 
 <!-- WARN -->
-<div class="warn" id="noKeyWarn">⚠ No API key set. Enter your secrete API key (given to you by ABC specialist) to enable AI.</div>
+<div class="warn" id="noKeyWarn">⚠ No API key set. Enter your Anthropic API key to enable AI.</div>
 
 <!-- API KEY -->
 <div class="panel">
   <div class="sec-title">Configuration</div>
   <div class="g2" style="margin-bottom:10px;">
     <div>
-      <div class="field-label">Secrete Key (ask your ABC specialist)</div>
+      <div class="field-label">Anthropic API Key</div>
       <input type="password" id="apiKey" placeholder="sk-ant-...">
     </div>
     <div>
@@ -407,11 +407,18 @@ textarea{resize:vertical;}
 <!-- PHOTOS -->
 <div class="panel">
   <div class="sec-title">📸 Site Photos</div>
-  <div class="sec-sub">AI auto-captions each photo. Tap to upload or use camera directly.</div>
-  <div class="photo-drop" id="photoDropZone" onclick="document.getElementById('photoInput').click()">
-    <div style="font-size:32px;margin-bottom:8px;">📷</div>
-    <div style="color:var(--mu);font-size:13px;"><strong style="color:var(--y);">Tap to add photos</strong> or drag &amp; drop · Camera or gallery</div>
-    <input type="file" id="photoInput" accept="image/*" multiple capture="environment" style="display:none" onchange="handlePhotos(this.files)">
+  <div class="sec-sub">AI auto-captions each photo. Use camera or choose from gallery.</div>
+  <div class="photo-drop" id="photoDropZone" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="event.preventDefault();this.classList.remove('drag-over');handlePhotos(event.dataTransfer.files)">
+    <div style="font-size:32px;margin-bottom:10px;">📷</div>
+    <div style="color:var(--mu);font-size:13px;margin-bottom:14px;">Drag &amp; drop photos here, or use the buttons below</div>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+      <button class="btn btn-y btn-sm" onclick="document.getElementById('photoCamera').click()" style="gap:6px;">📷 Take Photo</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('photoGallery').click()">🖼 Choose from Gallery</button>
+    </div>
+    <!-- Camera only — no gallery -->
+    <input type="file" id="photoCamera" accept="image/*" capture="environment" style="display:none" onchange="handlePhotos(this.files)">
+    <!-- Gallery only — no camera shortcut -->
+    <input type="file" id="photoGallery" accept="image/*" multiple style="display:none" onchange="handlePhotos(this.files)">
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
     <span id="photoStats" style="font-size:12px;color:var(--mu);">No photos</span>
@@ -773,7 +780,7 @@ function addEquipment(isVehicle, prefillData){
   if(typeof isVehicle !== 'boolean') isVehicle = false;
   const prefill = (prefillData && typeof prefillData === 'object') ? prefillData : null;
   const id = ++eqCounter;
-  const eq = prefill || { id, eqId:'', name:'', isVehicle, make:'', model:'', plate:'', status:'Active', idleHrs:0, idleMins:0 };
+  const eq = prefill || { id, eqId:'', name:'', isVehicle, make:'', model:'', plate:'', vin:'', status:'Active', idleHrs:0, idleMins:0 };
   if(!prefill) equipmentList.push(eq);
   
   const div = document.createElement('div');
@@ -792,11 +799,14 @@ function addEquipment(isVehicle, prefillData){
       ${isVehicle ? `
       <div>
         <div class="field-label">Make &amp; Model</div>
-        <input type="text" value="${eq.make||''}" placeholder="Caterpillar 777G" oninput="updateEq(${id},'make',this.value)">
+        <input type="text" id="eq-make-${id}" value="${eq.make||''}" placeholder="Ford F-350" oninput="updateEq(${id},'make',this.value)">
       </div>
       <div>
-        <div class="field-label">License Plate</div>
-        <input type="text" value="${eq.plate||''}" placeholder="ABC-1234" oninput="updateEq(${id},'plate',this.value)">
+        <div class="field-label" style="display:flex;align-items:center;gap:6px;">
+          License Plate
+          <button class="btn btn-ghost btn-sm" onclick="scanPlate(${id})" title="Scan plate with camera" style="padding:2px 7px;font-size:10px;margin:0;">📷 Scan</button>
+        </div>
+        <input type="text" id="eq-plate-${id}" value="${eq.plate||''}" placeholder="ABC-1234" oninput="updateEq(${id},'plate',this.value)" style="text-transform:uppercase;">
       </div>` : ''}
       <div>
         <div class="field-label">Status</div>
@@ -811,6 +821,17 @@ function addEquipment(isVehicle, prefillData){
         <button class="btn btn-red" onclick="removeEq(${id})" style="white-space:nowrap;">✕ Remove</button>
       </div>
     </div>
+    ${isVehicle ? `
+    <div style="margin-top:8px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:160px;">
+        <div class="field-label" style="display:flex;align-items:center;gap:6px;">
+          VIN
+          <button class="btn btn-ghost btn-sm" onclick="lookupVIN(${id})" title="Look up vehicle by VIN via NHTSA" style="padding:2px 7px;font-size:10px;margin:0;">🔍 NHTSA Lookup</button>
+        </div>
+        <input type="text" id="eq-vin-${id}" value="${eq.vin||''}" placeholder="17-character VIN" maxlength="17" oninput="updateEq(${id},'vin',this.value.toUpperCase());this.value=this.value.toUpperCase()" style="font-family:monospace;letter-spacing:1px;">
+      </div>
+      <div id="eq-nhtsa-${id}" style="font-size:11px;color:var(--or);padding-bottom:6px;"></div>
+    </div>` : ''}
     <div id="idle-row-${id}" style="margin-top:8px;display:${eq.status==='Idle'?'flex':'none'};align-items:center;gap:10px;background:rgba(232,99,26,.07);border:1px solid rgba(232,99,26,.3);border-radius:6px;padding:8px 12px;">
       <span style="font-size:12px;color:var(--or);font-weight:600;">⏱ Idle Time:</span>
       <div style="display:flex;align-items:center;gap:4px;">
@@ -845,6 +866,131 @@ function removeEq(id){
   const el = document.getElementById('eq-row-'+id);
   if(el) el.remove();
   autosave();
+}
+
+// ── LICENSE PLATE SCAN (AI vision reads plate from camera photo) ──
+function scanPlate(eqId){
+  if(!apiKey){
+    alert('An API key is required for plate scanning. Add your Anthropic API key in Configuration above.');
+    return;
+  }
+  // Open camera to capture plate photo
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  input.onchange = async function(){
+    const file = input.files[0];
+    document.body.removeChild(input);
+    if(!file) return;
+
+    const statusEl = document.getElementById('eq-nhtsa-'+eqId);
+    const plateEl  = document.getElementById('eq-plate-'+eqId);
+    statusEl.textContent = '📷 Reading plate…';
+
+    // Read file as base64
+    const base64 = await new Promise(function(resolve){
+      const reader = new FileReader();
+      reader.onload = function(){ resolve(reader.result.split(',')[1]); };
+      reader.readAsDataURL(file);
+    });
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body: JSON.stringify({
+          model:'claude-sonnet-4-20250514', max_tokens:60,
+          messages:[{role:'user', content:[
+            {type:'image', source:{type:'base64', media_type:file.type, data:base64}},
+            {type:'text', text:'Read the license plate number in this photo. Output ONLY the plate number exactly as it appears, with no spaces, dashes, or explanation. If you cannot read a plate clearly, output UNREADABLE.'}
+          ]}]
+        })
+      });
+      const data = await res.json();
+      if(data.error) throw new Error(data.error.message);
+      const plate = data.content.map(b=>b.text||'').join('').trim().toUpperCase().replace(/\s+/g,'');
+
+      if(plate === 'UNREADABLE' || !plate){
+        statusEl.textContent = '⚠ Plate unreadable — enter manually';
+        return;
+      }
+
+      // Fill plate field
+      plateEl.value = plate;
+      updateEq(eqId, 'plate', plate);
+      statusEl.textContent = '✓ Plate scanned: ' + plate + ' — enter VIN below for full vehicle lookup';
+      autosave();
+
+    } catch(err){
+      statusEl.textContent = '⚠ Scan error: ' + err.message;
+    }
+  };
+
+  input.click();
+}
+
+// ── NHTSA VIN DECODE (free federal API — no key required) ──
+async function lookupVIN(eqId){
+  const vinEl    = document.getElementById('eq-vin-'+eqId);
+  const makeEl   = document.getElementById('eq-make-'+eqId);
+  const statusEl = document.getElementById('eq-nhtsa-'+eqId);
+  const vin = (vinEl ? vinEl.value : '').trim().toUpperCase();
+
+  if(vin.length !== 17){
+    statusEl.textContent = '⚠ VIN must be exactly 17 characters';
+    return;
+  }
+
+  statusEl.textContent = '🔍 Looking up VIN…';
+
+  try {
+    const res = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/' + vin + '?format=json');
+    const data = await res.json();
+    const results = data.Results || [];
+
+    const get = (var_) => {
+      const r = results.find(x=>x.Variable===var_);
+      return (r && r.Value && r.Value !== 'Not Applicable' && r.Value !== null) ? r.Value : '';
+    };
+
+    const year  = get('Model Year');
+    const make  = get('Make');
+    const model = get('Model');
+    const body  = get('Body Class');
+    const plant = get('Plant Country');
+    const drive = get('Drive Type');
+    const fuel  = get('Fuel Type - Primary');
+
+    if(!make){
+      statusEl.textContent = '⚠ VIN not found in NHTSA database — check for typos';
+      return;
+    }
+
+    // Auto-fill make/model field
+    const makeModel = [year, make, model].filter(Boolean).join(' ');
+    if(makeEl){ makeEl.value = makeModel; updateEq(eqId, 'make', makeModel); }
+    updateEq(eqId, 'vin', vin);
+
+    // Store full NHTSA data on the equipment record for the report
+    const eq = equipmentList.find(e=>e.id===eqId);
+    if(eq) eq.nhtsaInfo = { year, make, model, body, drive, fuel, plant };
+
+    // Show summary
+    let summary = '✓ ' + makeModel;
+    if(body)  summary += ' · ' + body;
+    if(drive) summary += ' · ' + drive;
+    if(fuel)  summary += ' · ' + fuel;
+    statusEl.style.color = 'var(--green, #2ecc71)';
+    statusEl.textContent = summary;
+    autosave();
+
+  } catch(err){
+    statusEl.textContent = '⚠ NHTSA lookup failed — check internet connection';
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1083,15 +1229,19 @@ function handlePhotos(files){
       const id = ++photoCounter;
       const dataUrl = e.target.result;
       const base64 = dataUrl.split(',')[1];
-      photos.push({id, dataUrl, base64, mimeType:f.type, caption:'', category:'general'});
-      renderPhotoCard(id, dataUrl);
+      const timestamp = new Date().toLocaleString('en-US', {
+        month:'short', day:'2-digit', year:'numeric',
+        hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true
+      });
+      photos.push({id, dataUrl, base64, mimeType:f.type, caption:'', category:'general', timestamp});
+      renderPhotoCard(id, dataUrl, timestamp);
       updatePhotoStats();
     };
     reader.readAsDataURL(f);
   });
 }
 
-function renderPhotoCard(id, dataUrl){
+function renderPhotoCard(id, dataUrl, timestamp){
   const grid = document.getElementById('photoGrid');
   const card = document.createElement('div');
   card.className = 'photo-card';
@@ -1101,6 +1251,7 @@ function renderPhotoCard(id, dataUrl){
     <div class="ai-done-badge" id="aibadge-${id}">AI ✓</div>
     <button class="photo-remove" onclick="removePhoto(${id})">×</button>
     <div class="photo-card-body">
+      <div style="font-size:10px;color:var(--mu);margin-bottom:4px;">🕐 ${timestamp||''}</div>
       <textarea class="photo-caption-input" id="pcap-${id}" placeholder="AI caption or type..." style="font-size:11px;min-height:36px;background:transparent;border:none;width:100%;color:var(--lt);font-family:'DM Sans',sans-serif;resize:none;outline:none;" oninput="updatePhotoCap(${id},this.value)"></textarea>
     </div>
     <div class="photo-card-foot">
@@ -1345,6 +1496,13 @@ async function generatePlainReport(){
       if(e.isVehicle){
         report += '     Make/Model:   ' + (e.make || 'N/A') + '\n';
         report += '     License Plate:' + (e.plate || 'N/A') + '\n';
+        if(e.vin) report += '     VIN:          ' + e.vin + '\n';
+        if(e.nhtsaInfo){
+          const n = e.nhtsaInfo;
+          if(n.body)  report += '     Body Class:   ' + n.body + '\n';
+          if(n.drive) report += '     Drive Type:   ' + n.drive + '\n';
+          if(n.fuel)  report += '     Fuel Type:    ' + n.fuel + '\n';
+        }
       }
       report += '     Status:       ' + e.status + '\n';
       if(e.status === 'Idle'){
@@ -1380,7 +1538,8 @@ async function generatePlainReport(){
     report += line52d + '\n## PHOTO LOG\n' + line52d + '\n';
     photos.forEach(function(p, i){
       const cat = p.category.charAt(0).toUpperCase() + p.category.slice(1);
-      report += '\n  Photo ' + (i+1) + ' [' + cat + ']: ' + (p.caption || '(No caption)') + '\n';
+      const ts  = p.timestamp ? '  [' + p.timestamp + ']' : '';
+      report += '\n  Photo ' + (i+1) + ' [' + cat + ']' + ts + ': ' + (p.caption || '(No caption)') + '\n';
     });
     report += '\n';
   }
@@ -1651,21 +1810,27 @@ function buildHTMLReport(textBody){
   const reportDate = v('reportDate') || '';
   const engineer   = v('engineer') || 'N/A';
 
-  // Photo rows
+  // Photo rows — full width, stacked, print-ready
   let photoHTML = '';
   if(photos.length > 0){
-    photoHTML = '<h2 style="color:#c8890a;border-bottom:2px solid #c8890a;padding-bottom:6px;">Photo Log</h2>';
-    photoHTML += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px;">';
+    photoHTML = '<h2 style="color:#c8890a;border-bottom:2px solid #c8890a;padding-bottom:6px;margin-top:32px;">Photo Log</h2>';
     photos.forEach(function(p, i){
       const cat = p.category.charAt(0).toUpperCase() + p.category.slice(1);
-      photoHTML += '<div style="border:1px solid #ddd;border-radius:6px;overflow:hidden;">';
-      photoHTML += '<img src="' + p.dataUrl + '" style="width:100%;height:140px;object-fit:cover;display:block;">';
-      photoHTML += '<div style="padding:8px 10px;font-size:12px;">';
-      photoHTML += '<strong style="color:#c8890a;">' + cat + '</strong><br>';
-      photoHTML += 'Photo ' + (i+1) + ': ' + (p.caption || '(No caption)');
+      const ts  = p.timestamp || '';
+      photoHTML += '<div style="width:100%;margin-bottom:32px;page-break-inside:avoid;border:1px solid #ddd;border-radius:6px;overflow:hidden;">';
+      // Full-width image — no fixed height, natural aspect ratio
+      photoHTML += '<img src="' + p.dataUrl + '" style="width:100%;display:block;max-width:100%;">';
+      photoHTML += '<div style="padding:10px 14px;background:#fafafa;border-top:1px solid #eee;">';
+      photoHTML += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;">';
+      photoHTML += '<div>';
+      photoHTML += '<span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#c8890a;letter-spacing:0.5px;">' + cat + '</span>';
+      photoHTML += '&nbsp;&nbsp;<span style="font-size:12px;color:#555;font-weight:600;">Photo ' + (i+1) + '</span>';
+      photoHTML += '</div>';
+      if(ts) photoHTML += '<div style="font-size:11px;color:#888;">🕐 ' + ts + '</div>';
+      photoHTML += '</div>';
+      photoHTML += '<div style="font-size:13px;color:#222;margin-top:6px;line-height:1.5;">' + (p.caption || '<em style="color:#999;">No caption</em>') + '</div>';
       photoHTML += '</div></div>';
     });
-    photoHTML += '</div>';
   }
 
   // Signature rows
@@ -1717,6 +1882,13 @@ function buildHTMLReport(textBody){
   h2{font-size:15px;color:#c8890a;}
   .header-block{background:#f5f0e8;border-left:4px solid #c8890a;padding:14px 18px;border-radius:4px;margin-bottom:20px;font-size:13px;line-height:1.8;}
   .footer{font-size:11px;color:#999;border-top:1px solid #eee;padding-top:12px;margin-top:24px;}
+  @media print {
+    body{max-width:100%;padding:0;margin:0;}
+    .header-block{background:#f5f0e8!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    img{max-width:100%!important;page-break-inside:avoid;}
+    h2{page-break-after:avoid;}
+    div{page-break-inside:avoid;}
+  }
 </style>
 </head>
 <body>
