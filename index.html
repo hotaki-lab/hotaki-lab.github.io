@@ -993,6 +993,17 @@ async function lookupVIN(eqId){
     if(makeEl){ makeEl.value = makeModel; updateEq(eqId, 'make', makeModel); }
     updateEq(eqId, 'vin', vin);
 
+    // Auto-fill name/type field from NHTSA if the user left it blank
+    // (the report filter uses e.name — if empty the vehicle is skipped)
+    const eqObj = equipmentList.find(e=>e.id===eqId);
+    if(eqObj && !eqObj.name){
+      const autoName = [year, make, model].filter(Boolean).join(' ');
+      eqObj.name = autoName;
+      // Also update the Name/Type input visually
+      const nameInput = document.querySelector('#eq-row-'+eqId+' input[placeholder="Dump Truck"], #eq-row-'+eqId+' input[placeholder="Tower Crane"]');
+      if(nameInput) nameInput.value = autoName;
+    }
+
     // Build human-readable GVWR string
     // NHTSA returns ranges like "Class 3: 10,001 - 14,000 lb (4,536 - 6,350 kg)"
     let gvwrStr = '';
@@ -1513,7 +1524,7 @@ async function generatePlainReport(){
 
   // ── Equipment Register ──
   report += line52d + '\n## EQUIPMENT REGISTER\n' + line52d + '\n';
-  const eqFiltered = equipmentList.filter(function(e){ return e.name; });
+  const eqFiltered = equipmentList.filter(function(e){ return e.name || e.make || e.plate || e.vin; });
   if(eqFiltered.length === 0){
     report += 'No equipment logged.\n';
   } else {
@@ -1659,7 +1670,7 @@ function buildPrompt(){
   const gpsStr = gpsCoords ? `${gpsCoords.lat}, ${gpsCoords.lng}` : 'Not available';
   
   // Equipment section
-  const eqLines = equipmentList.filter(e=>e.name).map(e=>{
+  const eqLines = equipmentList.filter(e=>e.name||e.make||e.plate||e.vin).map(e=>{
     let line = `  - ID: ${e.eqId||'N/A'} | ${e.name} | Status: ${e.status}`;
     if(e.isVehicle){
       if(e.make)  line += ` | Vehicle: ${e.make}`;
