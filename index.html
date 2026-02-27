@@ -211,6 +211,23 @@ textarea{resize:vertical;}
 /* DIVIDER */
 .divider{height:1px;background:var(--dk3);margin:24px 0;}
 
+/* FIELD MIC BUTTON */
+.mic-btn{background:transparent;border:1px solid var(--dk4);border-radius:100px;color:var(--mu);font-size:11px;padding:2px 7px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;line-height:1.4;transition:all .15s;white-space:nowrap;}
+.mic-btn:hover{border-color:var(--or);color:var(--or);}
+.mic-btn.active{border-color:var(--rd);color:var(--rd);background:rgba(231,76,60,.1);animation:pulse .9s infinite;}
+.field-row{display:flex;align-items:center;gap:5px;}
+.field-row input{flex:1;min-width:0;}
+
+/* TEMPLATE MODAL */
+.tpl-modal{background:var(--dk2);border:1.5px solid var(--y);border-radius:12px;padding:24px 22px;max-width:400px;width:92%;max-height:82vh;overflow-y:auto;}
+.tpl-modal h3{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--y);margin-bottom:4px;letter-spacing:1.5px;}
+.tpl-modal p{font-size:12px;color:var(--mu);margin-bottom:18px;}
+.tpl-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;}
+.tpl-item{display:flex;align-items:center;gap:8px;background:var(--dk3);border:1.5px solid var(--dk4);border-radius:8px;padding:10px 12px;}
+.tpl-item-name{flex:1;font-size:13px;font-weight:500;color:var(--lt);}
+.tpl-item-meta{font-size:11px;color:var(--mu);}
+.tpl-empty{font-size:13px;color:var(--mu);text-align:center;padding:20px 0;}
+
 @media(max-width:600px){
   .tog-grid{grid-template-columns:1fr;}
   header{padding:12px 16px;}
@@ -332,7 +349,13 @@ textarea{resize:vertical;}
 
 <!-- EQUIPMENT LOG -->
 <div class="panel">
-  <div class="sec-title">Equipment Log</div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+    <div class="sec-title">Equipment Log</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" onclick="saveEqTemplate()" title="Save current equipment as a reusable template">💾 Save Template</button>
+      <button class="btn btn-ghost btn-sm" onclick="openEqTemplates()" title="Load a saved equipment template">📋 Load Template</button>
+    </div>
+  </div>
   <div class="sec-sub">Required for accident reporting compliance. All equipment must be logged.</div>
 
   <div id="eqList"></div>
@@ -344,7 +367,13 @@ textarea{resize:vertical;}
 
 <!-- LABOR LOG -->
 <div class="panel">
-  <div class="sec-title">Labor Compliance Log</div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+    <div class="sec-title">Labor Compliance Log</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" onclick="saveCrewTemplate()" title="Save current crew as a reusable template">💾 Save Template</button>
+      <button class="btn btn-ghost btn-sm" onclick="openCrewTemplates()" title="Load a saved crew template">📋 Load Template</button>
+    </div>
+  </div>
   <div class="sec-sub">Legal names and roles required for labor compliance. Use camera to scan ID cards.</div>
 
   <div id="laborList"></div>
@@ -407,7 +436,7 @@ textarea{resize:vertical;}
 <!-- PHOTOS -->
 <div class="panel">
   <div class="sec-title">📸 Site Photos</div>
-  <div class="sec-sub">AI auto-captions each photo. Use camera or choose from gallery.</div>
+  <div class="sec-sub">Voice-caption each photo — tap 🎙 Speak on any photo and dictate the caption live.</div>
   <div class="photo-drop" id="photoDropZone" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="event.preventDefault();this.classList.remove('drag-over');handlePhotos(event.dataTransfer.files)">
     <div style="font-size:32px;margin-bottom:10px;">📷</div>
     <div style="color:var(--mu);font-size:13px;margin-bottom:14px;">Drag &amp; drop photos here, or use the buttons below</div>
@@ -480,6 +509,30 @@ textarea{resize:vertical;}
 </div>
 
 </div><!-- /container -->
+
+<!-- CREW TEMPLATE MODAL -->
+<div class="modal-overlay" id="crewTplModal">
+  <div class="tpl-modal">
+    <h3>👷 Crew Templates</h3>
+    <p>Save today's crew roster and reload it on future shifts — one tap fills all workers.</p>
+    <div id="crewTplList" class="tpl-list"></div>
+    <div style="display:flex;gap:8px;margin-top:4px;">
+      <button class="btn btn-ghost btn-sm" style="flex:1;" onclick="document.getElementById('crewTplModal').classList.remove('show')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- EQUIPMENT TEMPLATE MODAL -->
+<div class="modal-overlay" id="eqTplModal">
+  <div class="tpl-modal">
+    <h3>🚛 Equipment Templates</h3>
+    <p>Save your site's standing equipment roster and reload it each shift with one tap.</p>
+    <div id="eqTplList" class="tpl-list"></div>
+    <div style="display:flex;gap:8px;margin-top:4px;">
+      <button class="btn btn-ghost btn-sm" style="flex:1;" onclick="document.getElementById('eqTplModal').classList.remove('show')">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- REPORT TYPE CHOICE MODAL -->
 <div class="modal-overlay" id="choiceModal">
@@ -787,19 +840,28 @@ function addEquipment(isVehicle, prefillData){
   div.id = 'eq-row-'+id;
   div.style.cssText = 'background:var(--dk3);border-radius:8px;padding:12px;margin-bottom:10px;';
   div.innerHTML = `
-    <div style="display:grid;grid-template-columns:90px 1fr ${isVehicle?'1fr 1fr 120px':''}  100px auto;gap:8px;align-items:end;">
+    <div style="display:grid;grid-template-columns:120px 1fr ${isVehicle?'1fr 1fr':''}  100px auto;gap:8px;align-items:end;">
       <div>
         <div class="field-label">Equip ID</div>
-        <input type="text" value="${eq.eqId||''}" placeholder="EQ-001" oninput="updateEq(${id},'eqId',this.value)">
+        <div class="field-row">
+          <input type="text" id="eq-eqid-${id}" value="${eq.eqId||''}" placeholder="EQ-001" oninput="updateEq(${id},'eqId',this.value)">
+          <button class="mic-btn" onclick="fieldMic(this,'eq-eqid-${id}')" title="Speak ID">🎙</button>
+        </div>
       </div>
       <div>
         <div class="field-label">Name / Type</div>
-        <input type="text" value="${eq.name||''}" placeholder="${isVehicle?'Dump Truck':'Tower Crane'}" oninput="updateEq(${id},'name',this.value)">
+        <div class="field-row">
+          <input type="text" id="eq-name-${id}" value="${eq.name||''}" placeholder="${isVehicle?'Dump Truck':'Tower Crane'}" oninput="updateEq(${id},'name',this.value)">
+          <button class="mic-btn" onclick="fieldMic(this,'eq-name-${id}')" title="Speak name">🎙</button>
+        </div>
       </div>
       ${isVehicle ? `
       <div>
         <div class="field-label">Make &amp; Model</div>
-        <input type="text" id="eq-make-${id}" value="${eq.make||''}" placeholder="Ford F-350" oninput="updateEq(${id},'make',this.value)">
+        <div class="field-row">
+          <input type="text" id="eq-make-${id}" value="${eq.make||''}" placeholder="Ford F-350" oninput="updateEq(${id},'make',this.value)">
+          <button class="mic-btn" onclick="fieldMic(this,'eq-make-${id}')" title="Speak make/model">🎙</button>
+        </div>
       </div>
       <div>
         <div class="field-label" style="display:flex;align-items:center;gap:6px;">
@@ -842,7 +904,10 @@ function addEquipment(isVehicle, prefillData){
         <input type="number" min="0" max="59" style="width:55px;" value="${eq.idleMins||0}" placeholder="0" oninput="updateEq(${id},'idleMins',this.value)">
         <span style="font-size:12px;color:var(--mu);">mins</span>
       </div>
-      <span style="font-size:11px;color:var(--mu);">Reason: <input type="text" style="width:130px;display:inline-block;" placeholder="Waiting for inspection" oninput="updateEq(${id},'idleReason',this.value)" value="${eq.idleReason||''}"></span>
+      <span style="font-size:11px;color:var(--mu);display:flex;align-items:center;gap:4px;">Reason:
+        <input type="text" id="eq-reason-${id}" style="width:120px;display:inline-block;" placeholder="Waiting for inspection" oninput="updateEq(${id},'idleReason',this.value)" value="${eq.idleReason||''}">
+        <button class="mic-btn" onclick="fieldMic(this,'eq-reason-${id}')" title="Speak reason">🎙</button>
+      </span>
     </div>
     ${isVehicle ? `<div style="margin-top:6px;"><span style="font-size:10px;color:var(--y);background:rgba(245,197,24,.1);padding:2px 7px;border-radius:4px;">🚛 VEHICLE</span></div>` : ''}
   `;
@@ -1048,15 +1113,24 @@ function addLaborRow(prefillData){
   div.innerHTML = `
     <div>
       ${id===1?'<div class="field-label">Legal Full Name</div>':''}
-      <input type="text" value="${lb.name||''}" placeholder="First Last" oninput="updateLb(${id},'name',this.value)">
+      <div class="field-row">
+        <input type="text" id="lb-name-${id}" value="${lb.name||''}" placeholder="First Last" oninput="updateLb(${id},'name',this.value)">
+        <button class="mic-btn" onclick="fieldMic(this,'lb-name-${id}')" title="Speak name">🎙</button>
+      </div>
     </div>
     <div>
       ${id===1?'<div class="field-label">Role / Trade</div>':''}
-      <input type="text" value="${lb.role||''}" placeholder="Carpenter, Electrician..." oninput="updateLb(${id},'role',this.value)">
+      <div class="field-row">
+        <input type="text" id="lb-role-${id}" value="${lb.role||''}" placeholder="Carpenter, Electrician..." oninput="updateLb(${id},'role',this.value)">
+        <button class="mic-btn" onclick="fieldMic(this,'lb-role-${id}')" title="Speak role">🎙</button>
+      </div>
     </div>
     <div>
       ${id===1?'<div class="field-label">Company / Sub</div>':''}
-      <input type="text" value="${lb.company||''}" placeholder="ABC Contractors" oninput="updateLb(${id},'company',this.value)">
+      <div class="field-row">
+        <input type="text" id="lb-co-${id}" value="${lb.company||''}" placeholder="ABC Contractors" oninput="updateLb(${id},'company',this.value)">
+        <button class="mic-btn" onclick="fieldMic(this,'lb-co-${id}')" title="Speak company">🎙</button>
+      </div>
     </div>
     <div style="${id===1?'padding-top:18px':''}">
       <button class="btn btn-red" onclick="removeLb(${id})" style="padding:8px 10px;font-size:14px;line-height:1;">✕</button>
@@ -1133,6 +1207,9 @@ const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechReco
 function toggleRecord(){
   const btn = document.getElementById('recordBtn');
   const ta  = document.getElementById('voiceText');
+
+  // Stop any active field mic to avoid audio conflicts
+  if(typeof stopFieldMic === 'function') stopFieldMic();
 
   // ── STOP ──────────────────────────────────────────────
   if(isRecording){
@@ -1290,7 +1367,7 @@ function renderPhotoCard(id, dataUrl, timestamp){
     <button class="photo-remove" onclick="removePhoto(${id})">×</button>
     <div class="photo-card-body">
       <div style="font-size:10px;color:var(--mu);margin-bottom:4px;">🕐 ${timestamp||''}</div>
-      <textarea class="photo-caption-input" id="pcap-${id}" placeholder="AI caption or type..." style="font-size:11px;min-height:36px;background:transparent;border:none;width:100%;color:var(--lt);font-family:'DM Sans',sans-serif;resize:none;outline:none;" oninput="updatePhotoCap(${id},this.value)"></textarea>
+      <textarea class="photo-caption-input" id="pcap-${id}" placeholder="Tap 🎙 to speak caption, or type..." style="font-size:11px;min-height:40px;background:transparent;border:none;width:100%;color:var(--lt);font-family:'DM Sans',sans-serif;resize:none;outline:none;" oninput="updatePhotoCap(${id},this.value)"></textarea>
     </div>
     <div class="photo-card-foot">
       <select class="photo-cat" onchange="updatePhotoCat(${id},this.value)">
@@ -1302,7 +1379,7 @@ function renderPhotoCard(id, dataUrl, timestamp){
         <option value="material">Material</option>
         <option value="equipment">Equipment</option>
       </select>
-      <button class="photo-ai-btn" id="paibtn-${id}" onclick="captionPhoto(${id})">⚡ AI Caption</button>
+      <button class="photo-ai-btn mic-btn" id="paibtn-${id}" onclick="photoFieldMic(this,${id})" title="Speak caption">🎙 Speak</button>
     </div>
   `;
   grid.appendChild(card);
@@ -1347,8 +1424,260 @@ async function captionPhoto(id){
 async function captionAll(){ for(const p of photos) await captionPhoto(p.id); }
 
 // ═══════════════════════════════════════════════════════
-// SIGNATURES — Fixed for mobile (pointer events + DPR scaling)
+// PER-FIELD VOICE MIC
 // ═══════════════════════════════════════════════════════
+// One shared SpeechRecognition instance for all field mics.
+// Only one field can be recording at a time — tapping a new
+// mic auto-stops the previous one.
+
+let fieldMicRecognition  = null;
+let fieldMicActiveBtn    = null;  // the currently lit-up mic button
+let fieldMicTargetId     = null;  // input/textarea element id being filled
+let fieldMicFinal        = '';    // committed text for current session
+
+function fieldMic(btn, inputId){
+  const SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechAPI){
+    alert('Voice input requires Chrome or Safari on iPhone (iOS 14.1+). Firefox does not support the Web Speech API.');
+    return;
+  }
+
+  // If this same button is already recording → stop it
+  if(fieldMicActiveBtn === btn){
+    stopFieldMic();
+    return;
+  }
+
+  // Stop any currently active field mic
+  stopFieldMic();
+
+  // Start new recognition on the target field
+  fieldMicTargetId = inputId;
+  fieldMicActiveBtn = btn;
+  const el = document.getElementById(inputId);
+  fieldMicFinal = el ? (el.value || el.textContent || '') : '';
+  // Save what was there before so we can append cleanly
+  const preExisting = fieldMicFinal;
+
+  btn.classList.add('active');
+  btn.title = 'Tap to stop';
+
+  const rec = new SpeechAPI();
+  rec.lang = ({en:'en-US',es:'es-MX',zh:'zh-CN',vi:'vi-VN'})[inputLang] || 'en-US';
+  rec.continuous      = true;
+  rec.interimResults  = true;
+  fieldMicRecognition = rec;
+
+  rec.onresult = function(event){
+    let finalSeg = '';
+    let interimSeg = '';
+    for(let i = event.resultIndex; i < event.results.length; i++){
+      const t = event.results[i][0].transcript;
+      if(event.results[i].isFinal) finalSeg += t;
+      else interimSeg += t;
+    }
+    if(finalSeg){
+      // Auto-capitalise first char, add space between segments
+      const seg = finalSeg.trim();
+      const cap = seg.charAt(0).toUpperCase() + seg.slice(1);
+      fieldMicFinal += (fieldMicFinal && !fieldMicFinal.endsWith(' ') ? ' ' : '') + cap;
+    }
+    const el = document.getElementById(fieldMicTargetId);
+    if(el){
+      el.value = fieldMicFinal + (interimSeg ? ' ' + interimSeg : '');
+      // Fire oninput so updateLb / updateEq pick up the value
+      el.dispatchEvent(new Event('input', {bubbles:true}));
+    }
+  };
+
+  rec.onerror = function(e){
+    if(e.error === 'no-speech') return;
+    stopFieldMic();
+  };
+
+  rec.onend = function(){
+    // Auto-restart if still recording (handles iOS 60s timeout)
+    if(fieldMicActiveBtn === btn){
+      try { rec.start(); } catch(e){ stopFieldMic(); }
+    }
+  };
+
+  try { rec.start(); }
+  catch(e){ btn.classList.remove('active'); fieldMicActiveBtn = null; }
+}
+
+function stopFieldMic(){
+  if(fieldMicRecognition){
+    try { fieldMicRecognition.stop(); } catch(e){}
+    fieldMicRecognition = null;
+  }
+  if(fieldMicActiveBtn){
+    fieldMicActiveBtn.classList.remove('active');
+    fieldMicActiveBtn.title = fieldMicActiveBtn.title.replace('Tap to stop','Speak');
+    fieldMicActiveBtn = null;
+  }
+  fieldMicTargetId = null;
+  fieldMicFinal = '';
+}
+
+// Photo caption voice — same engine, targets the photo textarea
+function photoFieldMic(btn, photoId){
+  const textareaId = 'pcap-' + photoId;
+  fieldMic(btn, textareaId);
+}
+
+// ═══════════════════════════════════════════════════════
+// CREW TEMPLATES
+// ═══════════════════════════════════════════════════════
+const CREW_TPL_KEY = 'sitelog_crew_templates';
+
+function getCrewTemplates(){
+  try { return JSON.parse(localStorage.getItem(CREW_TPL_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+
+function saveCrewTemplate(){
+  const crew = laborList.filter(l => l.name || l.role);
+  if(crew.length === 0){ alert('Add at least one worker before saving a template.'); return; }
+  const name = prompt('Name this crew template:\n(e.g. "ABC Bridge Night Crew")', 'Crew ' + new Date().toLocaleDateString());
+  if(!name) return;
+  const templates = getCrewTemplates();
+  // Replace existing template with same name
+  const idx = templates.findIndex(t => t.name === name);
+  const entry = { name, saved: new Date().toLocaleString(), count: crew.length, crew };
+  if(idx >= 0) templates[idx] = entry; else templates.push(entry);
+  localStorage.setItem(CREW_TPL_KEY, JSON.stringify(templates));
+  alert('✓ Crew template "' + name + '" saved (' + crew.length + ' workers)');
+}
+
+function openCrewTemplates(){
+  const templates = getCrewTemplates();
+  const list = document.getElementById('crewTplList');
+  list.innerHTML = '';
+  if(templates.length === 0){
+    list.innerHTML = '<div class="tpl-empty">No crew templates saved yet.<br>Add workers and tap 💾 Save Template.</div>';
+  } else {
+    templates.forEach(function(t, i){
+      const item = document.createElement('div');
+      item.className = 'tpl-item';
+      item.innerHTML = `
+        <div style="flex:1;">
+          <div class="tpl-item-name">${t.name}</div>
+          <div class="tpl-item-meta">${t.count} workers · saved ${t.saved}</div>
+        </div>
+        <button class="btn btn-y btn-sm" onclick="loadCrewTemplate(${i})">Load</button>
+        <button class="btn btn-red" onclick="deleteCrewTemplate(${i})" style="padding:5px 9px;">✕</button>
+      `;
+      list.appendChild(item);
+    });
+  }
+  document.getElementById('crewTplModal').classList.add('show');
+}
+
+function loadCrewTemplate(idx){
+  const templates = getCrewTemplates();
+  const t = templates[idx];
+  if(!t) return;
+  const mode = confirm('Load "' + t.name + '"?\n\nOK = Replace current crew\nCancel = Append to current crew');
+  if(mode === null) return; // dismissed — do nothing
+  if(mode){
+    // Replace
+    laborList = [];
+    document.getElementById('laborList').innerHTML = '';
+    lbCounter = 0;
+  }
+  t.crew.forEach(function(lb){
+    const entry = { id: ++lbCounter, name: lb.name||'', role: lb.role||'', company: lb.company||'' };
+    laborList.push(entry);
+    addLaborRow(entry);
+  });
+  autosave();
+  document.getElementById('crewTplModal').classList.remove('show');
+}
+
+function deleteCrewTemplate(idx){
+  const templates = getCrewTemplates();
+  if(!confirm('Delete template "' + templates[idx].name + '"?')) return;
+  templates.splice(idx, 1);
+  localStorage.setItem(CREW_TPL_KEY, JSON.stringify(templates));
+  openCrewTemplates(); // refresh modal
+}
+
+// ═══════════════════════════════════════════════════════
+// EQUIPMENT TEMPLATES
+// ═══════════════════════════════════════════════════════
+const EQ_TPL_KEY = 'sitelog_eq_templates';
+
+function getEqTemplates(){
+  try { return JSON.parse(localStorage.getItem(EQ_TPL_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+
+function saveEqTemplate(){
+  const equip = equipmentList.filter(e => e.name || e.make || e.plate);
+  if(equip.length === 0){ alert('Add at least one piece of equipment before saving a template.'); return; }
+  const name = prompt('Name this equipment template:\n(e.g. "ABC Bridge Equipment")', 'Equipment ' + new Date().toLocaleDateString());
+  if(!name) return;
+  const templates = getEqTemplates();
+  const idx = templates.findIndex(t => t.name === name);
+  const entry = { name, saved: new Date().toLocaleString(), count: equip.length, equipment: equip };
+  if(idx >= 0) templates[idx] = entry; else templates.push(entry);
+  localStorage.setItem(EQ_TPL_KEY, JSON.stringify(templates));
+  alert('✓ Equipment template "' + name + '" saved (' + equip.length + ' items)');
+}
+
+function openEqTemplates(){
+  const templates = getEqTemplates();
+  const list = document.getElementById('eqTplList');
+  list.innerHTML = '';
+  if(templates.length === 0){
+    list.innerHTML = '<div class="tpl-empty">No equipment templates saved yet.<br>Add equipment and tap 💾 Save Template.</div>';
+  } else {
+    templates.forEach(function(t, i){
+      const item = document.createElement('div');
+      item.className = 'tpl-item';
+      item.innerHTML = `
+        <div style="flex:1;">
+          <div class="tpl-item-name">${t.name}</div>
+          <div class="tpl-item-meta">${t.count} items · saved ${t.saved}</div>
+        </div>
+        <button class="btn btn-y btn-sm" onclick="loadEqTemplate(${i})">Load</button>
+        <button class="btn btn-red" onclick="deleteEqTemplate(${i})" style="padding:5px 9px;">✕</button>
+      `;
+      list.appendChild(item);
+    });
+  }
+  document.getElementById('eqTplModal').classList.add('show');
+}
+
+function loadEqTemplate(idx){
+  const templates = getEqTemplates();
+  const t = templates[idx];
+  if(!t) return;
+  const mode = confirm('Load "' + t.name + '"?\n\nOK = Replace current equipment list\nCancel = Append to current list');
+  if(mode === null) return;
+  if(mode){
+    equipmentList = [];
+    document.getElementById('eqList').innerHTML = '';
+    eqCounter = 0;
+  }
+  t.equipment.forEach(function(eq){
+    // Reset id and status — keep all NHTSA/vehicle info
+    const entry = Object.assign({}, eq, { id: ++eqCounter, status: 'Active', idleHrs: 0, idleMins: 0, idleReason: '' });
+    equipmentList.push(entry);
+    addEquipment(entry.isVehicle === true, entry);
+  });
+  autosave();
+  document.getElementById('eqTplModal').classList.remove('show');
+}
+
+function deleteEqTemplate(idx){
+  const templates = getEqTemplates();
+  if(!confirm('Delete template "' + templates[idx].name + '"?')) return;
+  templates.splice(idx, 1);
+  localStorage.setItem(EQ_TPL_KEY, JSON.stringify(templates));
+  openEqTemplates(); // refresh modal
+}
 function setupSig(role){
   const canvas = document.getElementById('canvas'+role);
   
