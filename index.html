@@ -971,13 +971,17 @@ async function lookupVIN(eqId){
       return (r && r.Value && r.Value !== 'Not Applicable' && r.Value !== null) ? r.Value : '';
     };
 
-    const year  = get('Model Year');
-    const make  = get('Make');
-    const model = get('Model');
-    const body  = get('Body Class');
-    const plant = get('Plant Country');
-    const drive = get('Drive Type');
-    const fuel  = get('Fuel Type - Primary');
+    const year   = get('Model Year');
+    const make   = get('Make');
+    const model  = get('Model');
+    const body   = get('Body Class');
+    const plant  = get('Plant Country');
+    const drive  = get('Drive Type');
+    const fuel   = get('Fuel Type - Primary');
+    const gvwr   = get('Gross Vehicle Weight Rating From');  // lower bound of GVWR range
+    const gvwrTo = get('Gross Vehicle Weight Rating To');    // upper bound (often same)
+    const axles  = get('Number of Axles');
+    const axleConfig = get('Axle Configuration');
 
     if(!make){
       statusEl.textContent = '⚠ VIN not found in NHTSA database — check for typos';
@@ -989,15 +993,24 @@ async function lookupVIN(eqId){
     if(makeEl){ makeEl.value = makeModel; updateEq(eqId, 'make', makeModel); }
     updateEq(eqId, 'vin', vin);
 
+    // Build human-readable GVWR string
+    // NHTSA returns ranges like "Class 3: 10,001 - 14,000 lb (4,536 - 6,350 kg)"
+    let gvwrStr = '';
+    if(gvwr && gvwrTo && gvwr !== gvwrTo) gvwrStr = gvwr + ' – ' + gvwrTo;
+    else if(gvwr) gvwrStr = gvwr;
+    else if(gvwrTo) gvwrStr = gvwrTo;
+
     // Store full NHTSA data on the equipment record for the report
     const eq = equipmentList.find(e=>e.id===eqId);
-    if(eq) eq.nhtsaInfo = { year, make, model, body, drive, fuel, plant };
+    if(eq) eq.nhtsaInfo = { year, make, model, body, drive, fuel, plant, gvwr: gvwrStr, axles, axleConfig };
 
     // Show summary
     let summary = '✓ ' + makeModel;
-    if(body)  summary += ' · ' + body;
-    if(drive) summary += ' · ' + drive;
-    if(fuel)  summary += ' · ' + fuel;
+    if(body)    summary += ' · ' + body;
+    if(drive)   summary += ' · ' + drive;
+    if(fuel)    summary += ' · ' + fuel;
+    if(gvwrStr) summary += ' · GVWR: ' + gvwrStr;
+    if(axles)   summary += ' · ' + axles + ' axles';
     statusEl.style.color = 'var(--green, #2ecc71)';
     statusEl.textContent = summary;
     autosave();
@@ -1513,9 +1526,12 @@ async function generatePlainReport(){
         if(e.vin) report += '     VIN:          ' + e.vin + '\n';
         if(e.nhtsaInfo){
           const n = e.nhtsaInfo;
-          if(n.body)  report += '     Body Class:   ' + n.body + '\n';
-          if(n.drive) report += '     Drive Type:   ' + n.drive + '\n';
-          if(n.fuel)  report += '     Fuel Type:    ' + n.fuel + '\n';
+          if(n.body)       report += '     Body Class:   ' + n.body + '\n';
+          if(n.drive)      report += '     Drive Type:   ' + n.drive + '\n';
+          if(n.fuel)       report += '     Fuel Type:    ' + n.fuel + '\n';
+          if(n.gvwr)       report += '     GVWR:         ' + n.gvwr + '\n';
+          if(n.axles)      report += '     No. of Axles: ' + n.axles + '\n';
+          if(n.axleConfig) report += '     Axle Config:  ' + n.axleConfig + '\n';
         }
       }
       report += '     Status:       ' + e.status + '\n';
@@ -1645,7 +1661,20 @@ function buildPrompt(){
   // Equipment section
   const eqLines = equipmentList.filter(e=>e.name).map(e=>{
     let line = `  - ID: ${e.eqId||'N/A'} | ${e.name} | Status: ${e.status}`;
-    if(e.isVehicle && e.make) line += ` | Vehicle: ${e.make} | Plate: ${e.plate||'N/A'}`;
+    if(e.isVehicle){
+      if(e.make)  line += ` | Vehicle: ${e.make}`;
+      if(e.plate) line += ` | Plate: ${e.plate}`;
+      if(e.vin)   line += ` | VIN: ${e.vin}`;
+      if(e.nhtsaInfo){
+        const n = e.nhtsaInfo;
+        if(n.body)       line += ` | Body: ${n.body}`;
+        if(n.drive)      line += ` | Drive: ${n.drive}`;
+        if(n.fuel)       line += ` | Fuel: ${n.fuel}`;
+        if(n.gvwr)       line += ` | GVWR: ${n.gvwr}`;
+        if(n.axles)      line += ` | Axles: ${n.axles}`;
+        if(n.axleConfig) line += ` | Axle Config: ${n.axleConfig}`;
+      }
+    }
     if(e.status==='Idle') line += ` | Idle: ${e.idleHrs||0}h ${e.idleMins||0}m${e.idleReason?' ('+e.idleReason+')':''}`;
     return line;
   }).join('\n');
@@ -1684,7 +1713,7 @@ ${notes}
 
 ═══ INSTRUCTIONS ═══
 Write a professional daily report with these sections: ${selectedLabels}.
-Also include a formal "Equipment Register" section summarizing all equipment above (note any idle equipment with hours and reason).
+Also include a formal "Equipment Register" section summarizing all equipment above (for vehicles include plate, VIN, GVWR, and axle count; note any idle equipment with hours and reason).
 Also include a "Labor Compliance Register" section listing all workers above in a clear format.
 Each section uses a ## header. Write in formal construction industry language. Be factual and concise. If info is missing write "Not reported." End with a sign-off block.`;
 }
