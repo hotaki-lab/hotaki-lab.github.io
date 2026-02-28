@@ -213,7 +213,17 @@ textarea{resize:vertical;}
 /* DIVIDER */
 .divider{height:1px;background:var(--dk3);margin:24px 0;}
 
-/* FIELD MIC BUTTON */
+/* REPORT LOGOS */
+.logo-slots{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;}
+.logo-slot{border:2px dashed var(--dk4);border-radius:8px;height:72px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;background:var(--dk3);}
+.logo-slot:hover{border-color:var(--y);background:rgba(245,197,24,.04);}
+.logo-slot img{width:100%;height:100%;object-fit:contain;padding:6px;}
+.logo-slot-label{font-size:10px;color:var(--mu);text-align:center;line-height:1.4;pointer-events:none;}
+.logo-slot-remove{position:absolute;top:3px;right:3px;width:18px;height:18px;background:rgba(231,76,60,.85);border:none;border-radius:50%;color:#fff;font-size:10px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:2;}
+.logo-slot:hover .logo-slot-remove{display:flex;}
+
+/* VIN SCAN */
+.vin-actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap;}
 .mic-btn{background:transparent;border:1px solid var(--dk4);border-radius:100px;color:var(--mu);font-size:11px;padding:2px 7px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;line-height:1.4;transition:all .15s;white-space:nowrap;}
 .mic-btn:hover{border-color:var(--or);color:var(--or);}
 .mic-btn.active{border-color:var(--rd);color:var(--rd);background:rgba(231,76,60,.1);animation:pulse .9s infinite;}
@@ -319,7 +329,35 @@ textarea{resize:vertical;}
     </div>
   </div>
 
-  <!-- WEATHER -->
+  <!-- REPORT LOGOS -->
+  <div style="margin-top:16px;border-top:1px solid var(--dk3);padding-top:14px;">
+    <div class="field-label" style="margin-bottom:8px;">Report Header Logos <span style="color:var(--mu);font-weight:400;text-transform:none;letter-spacing:0;">(tap a slot to upload · max 120×60px in report)</span></div>
+    <div class="logo-slots">
+      <div>
+        <div style="font-size:10px;color:var(--mu);margin-bottom:4px;text-align:center;">Left (Owner)</div>
+        <div class="logo-slot" id="logoSlot-left" onclick="pickLogo('left')" title="Tap to upload owner logo">
+          <div class="logo-slot-label">＋<br>Owner Logo</div>
+          <button class="logo-slot-remove" id="logoRemove-left" onclick="event.stopPropagation();removeLogo('left')">×</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--mu);margin-bottom:4px;text-align:center;">Center (Project)</div>
+        <div class="logo-slot" id="logoSlot-center" onclick="pickLogo('center')" title="Tap to upload project/agency logo">
+          <div class="logo-slot-label">＋<br>Project Logo</div>
+          <button class="logo-slot-remove" id="logoRemove-center" onclick="event.stopPropagation();removeLogo('center')">×</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--mu);margin-bottom:4px;text-align:center;">Right (Contractor)</div>
+        <div class="logo-slot" id="logoSlot-right" onclick="pickLogo('right')" title="Tap to upload contractor logo">
+          <div class="logo-slot-label">＋<br>Contractor Logo</div>
+          <button class="logo-slot-remove" id="logoRemove-right" onclick="event.stopPropagation();removeLogo('right')">×</button>
+        </div>
+      </div>
+    </div>
+    <!-- Hidden file input shared by all three slots -->
+    <input type="file" id="logoFileInput" accept="image/*" style="display:none" onchange="handleLogoUpload(this.files)">
+  </div>
   <div class="field-label">Weather</div>
   <div class="weather-chips">
     <button class="wc" onclick="setWeather(this,'☀ Sunny')">☀ Sunny</button>
@@ -504,6 +542,7 @@ textarea{resize:vertical;}
     </div>
   </div>
   <div class="report-body">
+    <div id="reportLogoBar" style="display:none;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--dk4);"></div>
     <div class="report-text" id="reportContent"></div>
     <div id="reportPhotoArea"></div>
     <div id="reportSigArea" style="margin-top:20px;"></div>
@@ -594,6 +633,7 @@ let isRecording = false;
 let offlineQueue = [];
 let autosaveTimer = null;
 let sigData = { Inspector: null, Superintendent: null };
+let reportLogos = { left: null, center: null, right: null };
 
 // ═══════════════════════════════════════════════════════
 // INIT
@@ -681,7 +721,7 @@ function saveDraft(){
     voiceText: v('voiceText'), inputLang,
     equipmentList, laborList,
     inspectorName: v('inspectorName'), superintendentName: v('superintendentName'),
-    gpsCoords
+    gpsCoords, reportLogos
   };
   localStorage.setItem('sitelog_draft', JSON.stringify(draft));
   document.getElementById('savedStatus').textContent = 'Auto-saved: ' + new Date().toLocaleTimeString();
@@ -701,6 +741,13 @@ function loadSavedDraft(){
   if(draft.weather){ weatherVal = draft.weather; document.querySelectorAll('.wc').forEach(b=>{ if(b.textContent.trim()===draft.weather.trim()){b.classList.add('active');}else b.classList.remove('active'); }); }
   if(draft.gpsCoords) gpsCoords = draft.gpsCoords;
   if(draft.inputLang) setLangByCode(draft.inputLang);
+  // Reload logos
+  if(draft.reportLogos){
+    reportLogos = draft.reportLogos;
+    ['left','center','right'].forEach(function(pos){
+      if(reportLogos[pos]) renderLogoSlot(pos, reportLogos[pos]);
+    });
+  }
   // Reload equipment
   document.getElementById('eqList').innerHTML = '';
   equipmentList = [];
@@ -887,14 +934,20 @@ function addEquipment(isVehicle, prefillData){
     </div>
     ${isVehicle ? `
     <div style="margin-top:8px;display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:160px;">
-        <div class="field-label" style="display:flex;align-items:center;gap:6px;">
-          VIN
-          <button class="btn btn-ghost btn-sm" onclick="lookupVIN(${id})" title="Look up vehicle by VIN via NHTSA" style="padding:2px 7px;font-size:10px;margin:0;">🔍 NHTSA Lookup</button>
+      <div style="flex:1;min-width:180px;">
+        <div class="field-label" style="margin-bottom:5px;">VIN</div>
+        <div class="vin-actions">
+          <input type="text" id="eq-vin-${id}" value="${eq.vin||''}" placeholder="17-character VIN" maxlength="17"
+            oninput="updateEq(${id},'vin',this.value.toUpperCase());this.value=this.value.toUpperCase()"
+            style="font-family:monospace;letter-spacing:1px;flex:1;min-width:0;">
+          <button class="mic-btn" onclick="fieldMic(this,'eq-vin-${id}')" title="Speak VIN">🎙</button>
+          <button class="mic-btn" onclick="scanVinOffline(${id})" title="Scan VIN with camera (offline — uses iOS native text recognition)">📷</button>
+          <button class="mic-btn" onclick="scanVinAI(${id})" title="Scan VIN with AI (requires internet)">🤖</button>
+          <button class="btn btn-ghost btn-sm" onclick="lookupVIN(${id})" title="NHTSA lookup" style="padding:2px 8px;font-size:10px;white-space:nowrap;">🔍 NHTSA</button>
         </div>
-        <input type="text" id="eq-vin-${id}" value="${eq.vin||''}" placeholder="17-character VIN" maxlength="17" oninput="updateEq(${id},'vin',this.value.toUpperCase());this.value=this.value.toUpperCase()" style="font-family:monospace;letter-spacing:1px;">
+        <div style="font-size:9px;color:var(--mu);margin-top:3px;">🎙 speak · 📷 scan offline · 🤖 scan w/AI · 🔍 lookup</div>
       </div>
-      <div id="eq-nhtsa-${id}" style="font-size:11px;color:var(--or);padding-bottom:6px;"></div>
+      <div id="eq-nhtsa-${id}" style="font-size:11px;color:var(--or);padding-bottom:6px;max-width:260px;"></div>
     </div>` : ''}
     <div id="idle-row-${id}" style="margin-top:8px;display:${eq.status==='Idle'?'flex':'none'};align-items:center;gap:10px;background:rgba(232,99,26,.07);border:1px solid rgba(232,99,26,.3);border-radius:6px;padding:8px 12px;">
       <span style="font-size:12px;color:var(--or);font-weight:600;">⏱ Idle Time:</span>
@@ -1841,18 +1894,205 @@ function deleteEqTemplate(idx){
   localStorage.setItem(EQ_TPL_KEY, JSON.stringify(templates));
   openEqTemplates(); // refresh modal
 }
+
+// ═══════════════════════════════════════════════════════
+// REPORT LOGOS
+// ═══════════════════════════════════════════════════════
+let _logoPickingPos = null; // which slot is being filled: 'left'|'center'|'right'
+
+function pickLogo(pos){
+  _logoPickingPos = pos;
+  const inp = document.getElementById('logoFileInput');
+  inp.value = '';
+  inp.click();
+}
+
+function handleLogoUpload(files){
+  const f = files[0];
+  if(!f || !_logoPickingPos) return;
+  const pos = _logoPickingPos;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    reportLogos[pos] = e.target.result;   // base64 data URL
+    renderLogoSlot(pos, e.target.result);
+    autosave();
+  };
+  reader.readAsDataURL(f);
+}
+
+function renderLogoSlot(pos, dataUrl){
+  const slot = document.getElementById('logoSlot-' + pos);
+  if(!slot) return;
+  // Clear placeholder text, show image
+  slot.innerHTML = `
+    <img src="${dataUrl}" alt="${pos} logo">
+    <button class="logo-slot-remove" id="logoRemove-${pos}"
+      onclick="event.stopPropagation();removeLogo('${pos}')">×</button>
+  `;
+}
+
+function removeLogo(pos){
+  reportLogos[pos] = null;
+  const slot = document.getElementById('logoSlot-' + pos);
+  const labels = { left:'Owner Logo', center:'Project Logo', right:'Contractor Logo' };
+  if(slot){
+    slot.innerHTML = `
+      <div class="logo-slot-label">＋<br>${labels[pos]}</div>
+      <button class="logo-slot-remove" id="logoRemove-${pos}"
+        onclick="event.stopPropagation();removeLogo('${pos}')">×</button>
+    `;
+  }
+  autosave();
+}
+
+// Called from renderReport — injects logos into the on-screen report panel
+function renderReportLogoBar(){
+  const bar = document.getElementById('reportLogoBar');
+  if(!bar) return;
+  const hasAny = reportLogos.left || reportLogos.center || reportLogos.right;
+  if(!hasAny){ bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = 'grid';
+  bar.style.gridTemplateColumns = '1fr 1fr 1fr';
+  bar.style.gap = '12px';
+  bar.style.alignItems = 'center';
+  const mk = (pos, align) => reportLogos[pos]
+    ? `<div style="text-align:${align};"><img src="${reportLogos[pos]}"
+         style="max-height:56px;max-width:140px;object-fit:contain;"></div>`
+    : `<div></div>`;
+  bar.innerHTML = mk('left','left') + mk('center','center') + mk('right','right');
+}
+
+// ═══════════════════════════════════════════════════════
+// VIN SCANNING
+// ═══════════════════════════════════════════════════════
+
+// ── OFFLINE: native iOS "Scan Text" via Live Text ──────
+// iOS 15+ lets the user long-press any focused text field and
+// choose "Scan Text" from the context menu — fully on-device ML,
+// zero internet needed. We trigger it by focusing the VIN field
+// and showing a short instruction toast. No API call required.
+function scanVinOffline(eqId){
+  const vinEl = document.getElementById('eq-vin-' + eqId);
+  const statusEl = document.getElementById('eq-nhtsa-' + eqId);
+  if(!vinEl) return;
+  // Focus the field — iOS keyboard + Live Text icon appears in toolbar
+  vinEl.focus();
+  vinEl.select();
+  statusEl.style.color = 'var(--bl)';
+  statusEl.textContent = '📷 On iPhone: tap the 📷 icon in the keyboard toolbar, or long-press the field → "Scan Text" to read VIN from camera — no internet needed';
+  // Clear hint after 8 seconds
+  setTimeout(function(){
+    if(statusEl.textContent.startsWith('📷 On iPhone')) statusEl.textContent = '';
+  }, 8000);
+}
+
+// ── ONLINE: AI vision reads VIN from a camera photo ────
+// Same compression + Claude API approach used for plate scanning.
+// Falls back gracefully if no API key or no internet.
+function scanVinAI(eqId){
+  if(!apiKey){
+    alert('AI VIN scan requires an Anthropic API key. Use the 📷 offline scan instead, or enter the VIN manually.');
+    return;
+  }
+  if(!navigator.onLine){
+    alert('No internet connection. Use the 📷 offline scan instead — tap 📷 then long-press the field and choose "Scan Text".');
+    return;
+  }
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  input.onchange = async function(){
+    const file = input.files[0];
+    document.body.removeChild(input);
+    if(!file) return;
+
+    const statusEl = document.getElementById('eq-nhtsa-' + eqId);
+    const vinEl    = document.getElementById('eq-vin-'   + eqId);
+    statusEl.style.color = 'var(--or)';
+    statusEl.textContent = '🤖 Reading VIN…';
+
+    // Compress for Claude 5MB limit
+    const base64 = await new Promise(function(resolve, reject){
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = function(){
+        URL.revokeObjectURL(objectUrl);
+        const MAX_W = 1600;
+        const scale = img.width > MAX_W ? MAX_W / img.width : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.88).split(',')[1]);
+      };
+      img.onerror = reject;
+      img.src = objectUrl;
+    });
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 40,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+              { type: 'text', text: 'Read the Vehicle Identification Number (VIN) in this photo. A VIN is exactly 17 characters, using only capital letters and digits (no I, O, or Q). Output ONLY the 17-character VIN with no spaces, dashes, or explanation. If you cannot read a VIN clearly, output UNREADABLE.' }
+            ]
+          }]
+        })
+      });
+
+      const data = await res.json();
+      if(data.error) throw new Error(data.error.message);
+      const vin = data.content.map(b => b.text || '').join('').trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
+
+      if(!vin || vin === 'UNREADABLE' || vin.length !== 17){
+        statusEl.style.color = 'var(--rd)';
+        statusEl.textContent = '⚠ VIN unreadable — try better lighting or enter manually';
+        return;
+      }
+
+      vinEl.value = vin;
+      updateEq(eqId, 'vin', vin);
+      statusEl.style.color = 'var(--gr)';
+      statusEl.textContent = '✓ VIN scanned: ' + vin + ' — tap 🔍 NHTSA to look up vehicle details';
+      autosave();
+
+    } catch(err){
+      statusEl.style.color = 'var(--rd)';
+      statusEl.textContent = '⚠ Scan error: ' + err.message;
+    }
+  };
+
+  input.click();
+}
+
+// ═══════════════════════════════════════════════════════
+// SIGNATURES — Fixed for mobile (pointer events + DPR scaling)
+// ═══════════════════════════════════════════════════════
 function setupSig(role){
   const canvas = document.getElementById('canvas'+role);
-  
-  // Scale canvas for device pixel ratio (fixes blur on Retina/mobile screens)
   const dpr = window.devicePixelRatio || 1;
   const displayW = canvas.offsetWidth || 400;
   const displayH = canvas.offsetHeight || 130;
-  canvas.width = displayW * dpr;
+  canvas.width  = displayW * dpr;
   canvas.height = displayH * dpr;
-  canvas.style.width = displayW + 'px';
+  canvas.style.width  = displayW + 'px';
   canvas.style.height = displayH + 'px';
-  
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
   ctx.fillStyle = '#1A1A1A';
@@ -1861,58 +2101,36 @@ function setupSig(role){
   ctx.lineWidth = 2.5;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  
-  let drawing = false;
-  let lastX = 0, lastY = 0;
-  
+  let drawing = false, lastX = 0, lastY = 0;
   function getPos(e){
     const rect = canvas.getBoundingClientRect();
-    // pointer events give clientX/Y directly
-    if(e.clientX !== undefined){
-      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    }
-    // fallback touch
-    if(e.touches && e.touches[0]){
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-    }
-    return { x: 0, y: 0 };
+    if(e.clientX !== undefined) return {x:e.clientX-rect.left, y:e.clientY-rect.top};
+    if(e.touches && e.touches[0]) return {x:e.touches[0].clientX-rect.left, y:e.touches[0].clientY-rect.top};
+    return {x:0,y:0};
   }
-  
   function onStart(e){
-    e.preventDefault();
-    drawing = true;
+    e.preventDefault(); drawing=true;
     canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
-    const p = getPos(e);
-    lastX = p.x; lastY = p.y;
+    const p=getPos(e); lastX=p.x; lastY=p.y;
   }
   function onMove(e){
     if(!drawing) return;
     e.preventDefault();
-    const p = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(lastX, lastY);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-    lastX = p.x; lastY = p.y;
-    const statusEl = document.getElementById('sigStatus'+role);
-    statusEl.textContent = '✓ Signed';
-    statusEl.style.color = 'var(--gr)';
-    sigData[role] = canvas.toDataURL();
+    const p=getPos(e);
+    ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke();
+    lastX=p.x; lastY=p.y;
+    const st=document.getElementById('sigStatus'+role);
+    st.textContent='✓ Signed'; st.style.color='var(--gr)';
+    sigData[role]=canvas.toDataURL();
   }
-  function onEnd(e){
-    drawing = false;
-  }
-  
-  // Use pointer events (covers mouse + touch + stylus on all modern mobile browsers)
-  canvas.addEventListener('pointerdown', onStart);
-  canvas.addEventListener('pointermove', onMove);
-  canvas.addEventListener('pointerup', onEnd);
-  canvas.addEventListener('pointercancel', onEnd);
+  function onEnd(){ drawing=false; }
+  canvas.addEventListener('pointerdown',  onStart);
+  canvas.addEventListener('pointermove',  onMove);
+  canvas.addEventListener('pointerup',    onEnd);
+  canvas.addEventListener('pointercancel',onEnd);
   canvas.addEventListener('pointerleave', onEnd);
-  
-  // Prevent page scroll while signing on touch devices
-  canvas.addEventListener('touchstart', function(e){ e.preventDefault(); }, {passive:false});
-  canvas.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
+  canvas.addEventListener('touchstart', function(e){e.preventDefault();},{passive:false});
+  canvas.addEventListener('touchmove',  function(e){e.preventDefault();},{passive:false});
 }
 
 function clearSig(role){
@@ -2327,6 +2545,7 @@ function renderReport(text, isAI){
   });
   sa.appendChild(sigGrid);
   
+  renderReportLogoBar();
   document.getElementById('reportOut').classList.add('show');
 }
 
@@ -2439,6 +2658,15 @@ function buildHTMLReport(textBody){
     })
     .join('\n');
 
+  // Logo bar — only rendered if at least one logo was uploaded
+  const hasLogos = reportLogos.left || reportLogos.center || reportLogos.right;
+  const logoBarHTML = hasLogos ? `
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid #c8890a;">
+  <div style="text-align:left;">${reportLogos.left  ? '<img src="'+reportLogos.left +'" style="max-height:60px;max-width:150px;object-fit:contain;">' : ''}</div>
+  <div style="text-align:center;">${reportLogos.center? '<img src="'+reportLogos.center+'" style="max-height:60px;max-width:150px;object-fit:contain;">' : ''}</div>
+  <div style="text-align:right;">${reportLogos.right ? '<img src="'+reportLogos.right +'" style="max-height:60px;max-width:150px;object-fit:contain;">' : ''}</div>
+</div>` : '';
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -2446,7 +2674,7 @@ function buildHTMLReport(textBody){
 <title>Site Daily Report – ${project} – ${reportDate}</title>
 <style>
   body{font-family:Arial,sans-serif;font-size:13px;color:#222;max-width:900px;margin:0 auto;padding:24px;}
-  h1{font-size:22px;color:#1a1a1a;border-bottom:3px solid #c8890a;padding-bottom:10px;}
+  h1{font-size:22px;color:#1a1a1a;border-bottom:3px solid #c8890a;padding-bottom:10px;margin-top:8px;}
   h2{font-size:15px;color:#c8890a;}
   .header-block{background:#f5f0e8;border-left:4px solid #c8890a;padding:14px 18px;border-radius:4px;margin-bottom:20px;font-size:13px;line-height:1.8;}
   .footer{font-size:11px;color:#999;border-top:1px solid #eee;padding-top:12px;margin-top:24px;}
@@ -2460,6 +2688,7 @@ function buildHTMLReport(textBody){
 </style>
 </head>
 <body>
+${logoBarHTML}
 <h1>Construction Daily Report</h1>
 <div class="header-block">
   <strong>Project:</strong> ${project} &nbsp;|&nbsp;
