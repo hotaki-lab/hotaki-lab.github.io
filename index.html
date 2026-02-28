@@ -8,6 +8,8 @@
 <!-- PWA manifest inline -->
 <link rel="manifest" href="data:application/json,{%22name%22:%22SiteLog+AI%22,%22short_name%22:%22SiteLog%22,%22display%22:%22standalone%22,%22background_color%22:%22%230F0F0F%22,%22theme_color%22:%22%23F5C518%22}">
 <meta name="theme-color" content="#F5C518">
+<!-- exifr: reads GPS + date metadata from gallery photos (pure browser, no server) -->
+<script src="https://cdn.jsdelivr.net/npm/exifr@7/dist/lite.umd.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 :root{--y:#F5C518;--or:#E8631A;--dk:#0F0F0F;--dk2:#1A1A1A;--dk3:#252525;--dk4:#333;--lt:#F2EDE4;--mu:#888;--gr:#2ECC71;--rd:#E74C3C;--bl:#3498DB;}
@@ -253,7 +255,7 @@ textarea{resize:vertical;}
 </div>
 
 <!-- WARN -->
-<div class="warn" id="noKeyWarn">⚠ No API key set. Enter your secret key to enable AI (Ask your ABC Specialist).</div>
+<div class="warn" id="noKeyWarn">⚠ No API key set. Enter your Anthropic API key to enable AI.</div>
 
 <!-- API KEY -->
 <div class="panel">
@@ -441,13 +443,13 @@ textarea{resize:vertical;}
     <div style="font-size:32px;margin-bottom:10px;">📷</div>
     <div style="color:var(--mu);font-size:13px;margin-bottom:14px;">Drag &amp; drop photos here, or use the buttons below</div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-      <button class="btn btn-y btn-sm" onclick="document.getElementById('photoCamera').click()" style="gap:6px;">📷 Take Photo</button>
+      <button class="btn btn-y btn-sm" onclick="takePhotoWithGPS()" style="gap:6px;">📷 Take Photo</button>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('photoGallery').click()">🖼 Choose from Gallery</button>
     </div>
-    <!-- Camera only — no gallery -->
-    <input type="file" id="photoCamera" accept="image/*" capture="environment" style="display:none" onchange="handlePhotos(this.files)">
-    <!-- Gallery only — no camera shortcut -->
-    <input type="file" id="photoGallery" accept="image/*" multiple style="display:none" onchange="handlePhotos(this.files)">
+    <!-- Camera only — opened programmatically after GPS acquired -->
+    <input type="file" id="photoCamera" accept="image/*" capture="environment" style="display:none" onchange="handleCameraPhoto(this.files)">
+    <!-- Gallery only — EXIF metadata extracted per file -->
+    <input type="file" id="photoGallery" accept="image/*" multiple style="display:none" onchange="handleGalleryPhotos(this.files)">
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
     <span id="photoStats" style="font-size:12px;color:var(--mu);">No photos</span>
@@ -936,7 +938,7 @@ function removeEq(id){
 // ── LICENSE PLATE SCAN (AI vision reads plate from camera photo) ──
 function scanPlate(eqId){
   if(!apiKey){
-    alert('An API key is required for plate scanning. Add your Anthropic API key in Configuration above.');
+    alert('An API key is required for plate scanning. Add your secret API key in Configuration above. Ask your ABC Specialist to provide you the key.');
     return;
   }
   // Open camera to capture plate photo
@@ -1336,37 +1338,149 @@ function togSection(key){
 // ═══════════════════════════════════════════════════════
 // PHOTOS
 // ═══════════════════════════════════════════════════════
-function handlePhotos(files){
-  Array.from(files).forEach(f=>{
+// ── TAKE PHOTO: get fresh GPS first, then open camera ──
+function takePhotoWithGPS(){
+  if(!navigator.geolocation){
+    // No geolocation support — open camera anyway without GPS
+    document.getElementById('photoCamera').click();
+    return;
+  }
+  // Show a quick status so engineer knows it's working
+  showStatus('📍 Getting GPS location…', true);
+  navigator.geolocation.getCurrentPosition(
+    function(pos){
+      hideStatus();
+      // Store the freshly acquired coords into gpsCoords so the rest of
+      // the app (header badge, report) also benefits
+      gpsCoords = {
+        lat: pos.coords.latitude.toFixed(6),
+        lng: pos.coords.longitude.toFixed(6),
+        acc: Math.round(pos.coords.accuracy)
+      };
+      updateGPSDisplay();
+      // NOW open the camera
+      document.getElementById('photoCamera').click();
+    },
+    function(err){
+      hideStatus();
+      // Permission denied or unavailable — open camera anyway
+      showStatus('⚠ GPS unavailable — photo will have no location', false);
+      setTimeout(hideStatus, 3000);
+      document.getElementById('photoCamera').click();
+    },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+  );
+}
+
+// ── CAMERA PHOTO: GPS was just acquired above — snapshot it now ──
+function handleCameraPhoto(files){
+  const photoGps = gpsCoords ? { lat: gpsCoords.lat, lng: gpsCoords.lng, acc: gpsCoords.acc } : null;
+  const now = new Date();
+  const timestamp = now.toLocaleString('en-US', {
+    month:'short', day:'2-digit', year:'numeric',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true
+  });
+  Array.from(files).forEach(f => {
     if(!f.type.startsWith('image/')) return;
     const reader = new FileReader();
     reader.onload = e => {
       const id = ++photoCounter;
       const dataUrl = e.target.result;
-      const base64 = dataUrl.split(',')[1];
-      const timestamp = new Date().toLocaleString('en-US', {
-        month:'short', day:'2-digit', year:'numeric',
-        hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true
-      });
-      photos.push({id, dataUrl, base64, mimeType:f.type, caption:'', category:'general', timestamp});
-      renderPhotoCard(id, dataUrl, timestamp);
+      photos.push({ id, dataUrl, base64: dataUrl.split(',')[1], mimeType: f.type,
+                    caption: '', category: 'general', timestamp, gps: photoGps });
+      renderPhotoCard(id, dataUrl, timestamp, photoGps);
       updatePhotoStats();
     };
     reader.readAsDataURL(f);
   });
+  // Reset input so the same file can be re-selected if needed
+  document.getElementById('photoCamera').value = '';
 }
 
-function renderPhotoCard(id, dataUrl, timestamp){
+// ── GALLERY PHOTO: extract EXIF GPS + date from each file ──
+async function handleGalleryPhotos(files){
+  for(const f of Array.from(files)){
+    if(!f.type.startsWith('image/')) continue;
+
+    // Try to read EXIF metadata (GPS + date) using exifr
+    let photoGps = null;
+    let timestamp = new Date().toLocaleString('en-US', {
+      month:'short', day:'2-digit', year:'numeric',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true
+    });
+
+    try {
+      if(typeof exifr !== 'undefined'){
+        const exif = await exifr.parse(f, {
+          pick: ['GPSLatitude','GPSLongitude','GPSLatitudeRef','GPSLongitudeRef','DateTimeOriginal','CreateDate']
+        });
+        if(exif){
+          // GPS from EXIF
+          if(exif.latitude != null && exif.longitude != null){
+            photoGps = {
+              lat: parseFloat(exif.latitude).toFixed(6),
+              lng: parseFloat(exif.longitude).toFixed(6),
+              acc: null   // EXIF GPS has no accuracy figure
+            };
+          }
+          // Date from EXIF (DateTimeOriginal is when the shutter fired)
+          const exifDate = exif.DateTimeOriginal || exif.CreateDate;
+          if(exifDate instanceof Date && !isNaN(exifDate)){
+            timestamp = exifDate.toLocaleString('en-US', {
+              month:'short', day:'2-digit', year:'numeric',
+              hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true
+            });
+          }
+        }
+      }
+    } catch(e){ /* EXIF read failed — use current time, no GPS */ }
+
+    // Read image data
+    await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const id = ++photoCounter;
+        const dataUrl = e.target.result;
+        photos.push({ id, dataUrl, base64: dataUrl.split(',')[1], mimeType: f.type,
+                      caption: '', category: 'general', timestamp, gps: photoGps });
+        renderPhotoCard(id, dataUrl, timestamp, photoGps);
+        updatePhotoStats();
+        resolve();
+      };
+      reader.readAsDataURL(f);
+    });
+  }
+  document.getElementById('photoGallery').value = '';
+}
+
+// ── RENDER PHOTO CARD ──
+function renderPhotoCard(id, dataUrl, timestamp, gps){
   const grid = document.getElementById('photoGrid');
   const card = document.createElement('div');
   card.className = 'photo-card';
   card.id = 'pcard-'+id;
+
+  // GPS link — only rendered when coordinates are available
+  let gpsLine = '';
+  if(gps && gps.lat && gps.lng){
+    const lat = parseFloat(gps.lat).toFixed(6);
+    const lng = parseFloat(gps.lng).toFixed(6);
+    const accText = (gps.acc != null) ? ` ±${Math.round(gps.acc)}m` : '';
+    const mapsUrl = `https://maps.apple.com/?ll=${lat},${lng}&z=18&t=h`;
+    gpsLine = `<a href="${mapsUrl}" target="_blank" rel="noopener"
+      style="display:block;font-size:10px;color:#4db8ff;font-family:'DM Mono',monospace;
+             text-decoration:none;margin-bottom:4px;line-height:1.5;word-break:break-all;
+             background:rgba(52,152,219,.12);border-radius:4px;padding:2px 5px;">
+      📍 ${lat}, ${lng}${accText}</a>`;
+  }
+
   card.innerHTML = `
     <img src="${dataUrl}" alt="Photo ${id}">
     <div class="ai-done-badge" id="aibadge-${id}">AI ✓</div>
     <button class="photo-remove" onclick="removePhoto(${id})">×</button>
     <div class="photo-card-body">
-      <div style="font-size:10px;color:var(--mu);margin-bottom:4px;">🕐 ${timestamp||''}</div>
+      <div style="font-size:10px;color:var(--mu);margin-bottom:3px;">🕐 ${timestamp||''}</div>
+      ${gpsLine}
       <textarea class="photo-caption-input" id="pcap-${id}" placeholder="Tap 🎙 to speak caption, or type..." style="font-size:11px;min-height:40px;background:transparent;border:none;width:100%;color:var(--lt);font-family:'DM Sans',sans-serif;resize:none;outline:none;" oninput="updatePhotoCap(${id},this.value)"></textarea>
     </div>
     <div class="photo-card-foot">
@@ -2126,7 +2240,14 @@ function renderReport(text, isAI){
     photos.forEach((p,i)=>{
       const card = document.createElement('div');
       card.style.cssText = 'background:var(--dk3);border-radius:6px;overflow:hidden;border:1px solid var(--dk4);';
-      card.innerHTML = `<img src="${p.dataUrl}" style="width:100%;height:100px;object-fit:cover;display:block;"><div style="padding:6px 8px;"><div style="font-size:9px;color:var(--or);font-weight:700;text-transform:uppercase;">${p.category}</div><div style="font-size:10px;color:var(--lt);line-height:1.3;margin-top:2px;">Photo ${i+1}: ${p.caption||'(No caption)'}</div></div>`;
+      let gpsTag = '';
+      if(p.gps && p.gps.lat){
+        const lat = parseFloat(p.gps.lat).toFixed(6);
+        const lng = parseFloat(p.gps.lng).toFixed(6);
+        const url = `https://maps.apple.com/?ll=${lat},${lng}&z=18&t=h`;
+        gpsTag = `<a href="${url}" target="_blank" style="display:block;font-size:9px;color:#4A9ECD;font-family:monospace;margin-top:2px;text-decoration:none;word-break:break-all;">📍 ${lat}, ${lng}</a>`;
+      }
+      card.innerHTML = `<img src="${p.dataUrl}" style="width:100%;height:100px;object-fit:cover;display:block;"><div style="padding:6px 8px;"><div style="font-size:9px;color:var(--or);font-weight:700;text-transform:uppercase;">${p.category}</div><div style="font-size:10px;color:var(--lt);line-height:1.3;margin-top:2px;">Photo ${i+1}: ${p.caption||'(No caption)'}</div>${gpsTag}</div>`;
       grid.appendChild(card);
     });
     pa.appendChild(grid);
@@ -2200,8 +2321,22 @@ function buildHTMLReport(textBody){
     photos.forEach(function(p, i){
       const cat = p.category.charAt(0).toUpperCase() + p.category.slice(1);
       const ts  = p.timestamp || '';
+
+      // GPS map link — coordinates as label, opens Apple Maps (iOS) / Google Maps (others)
+      let gpsHTML = '';
+      if(p.gps && p.gps.lat && p.gps.lng){
+        const lat = parseFloat(p.gps.lat).toFixed(6);
+        const lng = parseFloat(p.gps.lng).toFixed(6);
+        const acc = p.gps.acc ? ' &plusmn;' + Math.round(p.gps.acc) + 'm' : '';
+        const mapsUrl = 'https://maps.apple.com/?ll=' + lat + ',' + lng + '&z=18&t=h';
+        gpsHTML = '<a href="' + mapsUrl + '" target="_blank" rel="noopener" ' +
+          'style="display:inline-block;font-family:monospace;font-size:11px;color:#1a73e8;' +
+          'text-decoration:none;margin-top:5px;padding:3px 8px;background:#f0f7ff;' +
+          'border:1px solid #c5d8f5;border-radius:4px;">' +
+          '📍 ' + lat + ', ' + lng + acc + '</a>';
+      }
+
       photoHTML += '<div style="width:100%;margin-bottom:32px;page-break-inside:avoid;border:1px solid #ddd;border-radius:6px;overflow:hidden;">';
-      // Full-width image — no fixed height, natural aspect ratio
       photoHTML += '<img src="' + p.dataUrl + '" style="width:100%;display:block;max-width:100%;">';
       photoHTML += '<div style="padding:10px 14px;background:#fafafa;border-top:1px solid #eee;">';
       photoHTML += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;">';
@@ -2211,6 +2346,7 @@ function buildHTMLReport(textBody){
       photoHTML += '</div>';
       if(ts) photoHTML += '<div style="font-size:11px;color:#888;">🕐 ' + ts + '</div>';
       photoHTML += '</div>';
+      if(gpsHTML) photoHTML += gpsHTML;
       photoHTML += '<div style="font-size:13px;color:#222;margin-top:6px;line-height:1.5;">' + (p.caption || '<em style="color:#999;">No caption</em>') + '</div>';
       photoHTML += '</div></div>';
     });
