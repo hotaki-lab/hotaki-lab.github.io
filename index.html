@@ -8,8 +8,8 @@
 <!-- PWA manifest inline -->
 <link rel="manifest" href="data:application/json,{%22name%22:%22SiteLog+AI%22,%22short_name%22:%22SiteLog%22,%22display%22:%22standalone%22,%22background_color%22:%22%230F0F0F%22,%22theme_color%22:%22%23F5C518%22}">
 <meta name="theme-color" content="#F5C518">
-<!-- exifr: reads GPS + date metadata from gallery photos (pure browser, no server) -->
-<script src="https://cdn.jsdelivr.net/npm/exifr@7/dist/lite.umd.js"></script>
+<!-- exifr full build: reads GPS + date metadata from gallery photos (pure browser, no server) -->
+<script src="https://cdn.jsdelivr.net/npm/exifr@7/dist/full.umd.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 :root{--y:#F5C518;--or:#E8631A;--dk:#0F0F0F;--dk2:#1A1A1A;--dk3:#252525;--dk4:#333;--lt:#F2EDE4;--mu:#888;--gr:#2ECC71;--rd:#E74C3C;--bl:#3498DB;}
@@ -262,7 +262,7 @@ textarea{resize:vertical;}
   <div class="sec-title">Configuration</div>
   <div class="g2" style="margin-bottom:10px;">
     <div>
-      <div class="field-label">Secret Key (Ask Your ABC Specialist)</div>
+      <div class="field-label">Anthropic API Key</div>
       <input type="password" id="apiKey" placeholder="sk-ant-...">
     </div>
     <div>
@@ -938,7 +938,7 @@ function removeEq(id){
 // ── LICENSE PLATE SCAN (AI vision reads plate from camera photo) ──
 function scanPlate(eqId){
   if(!apiKey){
-    alert('An API key is required for plate scanning. Add your secret API key in Configuration above. Ask your ABC Specialist to provide you the key.');
+    alert('An API key is required for plate scanning. Add your Anthropic API key in Configuration above.');
     return;
   }
   // Open camera to capture plate photo
@@ -1338,63 +1338,112 @@ function togSection(key){
 // ═══════════════════════════════════════════════════════
 // PHOTOS
 // ═══════════════════════════════════════════════════════
-// ── TAKE PHOTO: get fresh GPS first, then open camera ──
+// Pending GPS fetch for the photo currently being taken
+// (filled while camera is open, applied when photo comes back)
+let pendingPhotoGps = null;
+let pendingPhotoGpsDone = false;
+
 function takePhotoWithGPS(){
-  if(!navigator.geolocation){
-    // No geolocation support — open camera anyway without GPS
-    document.getElementById('photoCamera').click();
-    return;
+  // Reset pending state
+  pendingPhotoGps = null;
+  pendingPhotoGpsDone = false;
+
+  // ── MUST open camera inside the user-gesture call stack ──
+  // iOS Safari blocks programmatic .click() on file inputs once
+  // we go async (e.g. inside a geolocation callback). Open first.
+  document.getElementById('photoCamera').click();
+
+  // ── Fetch GPS in parallel while camera is open ──
+  if(navigator.geolocation){
+    showStatus('📍 Getting GPS…', true);
+    navigator.geolocation.getCurrentPosition(
+      function(pos){
+        hideStatus();
+        pendingPhotoGps = {
+          lat: pos.coords.latitude.toFixed(6),
+          lng: pos.coords.longitude.toFixed(6),
+          acc: Math.round(pos.coords.accuracy)
+        };
+        pendingPhotoGpsDone = true;
+        // Also update the app-wide GPS display
+        gpsCoords = pendingPhotoGps;
+        updateGPSDisplay();
+      },
+      function(){ hideStatus(); pendingPhotoGpsDone = true; /* no GPS */ },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  } else {
+    pendingPhotoGpsDone = true;
   }
-  // Show a quick status so engineer knows it's working
-  showStatus('📍 Getting GPS location…', true);
-  navigator.geolocation.getCurrentPosition(
-    function(pos){
-      hideStatus();
-      // Store the freshly acquired coords into gpsCoords so the rest of
-      // the app (header badge, report) also benefits
-      gpsCoords = {
-        lat: pos.coords.latitude.toFixed(6),
-        lng: pos.coords.longitude.toFixed(6),
-        acc: Math.round(pos.coords.accuracy)
-      };
-      updateGPSDisplay();
-      // NOW open the camera
-      document.getElementById('photoCamera').click();
-    },
-    function(err){
-      hideStatus();
-      // Permission denied or unavailable — open camera anyway
-      showStatus('⚠ GPS unavailable — photo will have no location', false);
-      setTimeout(hideStatus, 3000);
-      document.getElementById('photoCamera').click();
-    },
-    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-  );
 }
 
-// ── CAMERA PHOTO: GPS was just acquired above — snapshot it now ──
+// ── CAMERA PHOTO handler ──
+// GPS may or may not have arrived yet — wait up to 12s for it,
+// then render the card with whatever we have.
 function handleCameraPhoto(files){
-  const photoGps = gpsCoords ? { lat: gpsCoords.lat, lng: gpsCoords.lng, acc: gpsCoords.acc } : null;
   const now = new Date();
   const timestamp = now.toLocaleString('en-US', {
     month:'short', day:'2-digit', year:'numeric',
     hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true
   });
+
   Array.from(files).forEach(f => {
     if(!f.type.startsWith('image/')) return;
     const reader = new FileReader();
     reader.onload = e => {
       const id = ++photoCounter;
       const dataUrl = e.target.result;
-      photos.push({ id, dataUrl, base64: dataUrl.split(',')[1], mimeType: f.type,
-                    caption: '', category: 'general', timestamp, gps: photoGps });
-      renderPhotoCard(id, dataUrl, timestamp, photoGps);
+      // Add photo to array with null GPS for now
+      const photoObj = { id, dataUrl, base64: dataUrl.split(',')[1], mimeType: f.type,
+                         caption: '', category: 'general', timestamp, gps: null };
+      photos.push(photoObj);
+      renderPhotoCard(id, dataUrl, timestamp, null);
       updatePhotoStats();
+
+      // Poll for GPS — the geolocation callback may still be in flight
+      // Check every 300ms, give up after 12s
+      let waited = 0;
+      const interval = setInterval(function(){
+        waited += 300;
+        if(pendingPhotoGpsDone || waited >= 12000){
+          clearInterval(interval);
+          if(pendingPhotoGps){
+            photoObj.gps = pendingPhotoGps;
+            updatePhotoCardGPS(id, pendingPhotoGps);
+          }
+        }
+      }, 300);
     };
     reader.readAsDataURL(f);
   });
-  // Reset input so the same file can be re-selected if needed
   document.getElementById('photoCamera').value = '';
+}
+
+// Inject / update the GPS link on an already-rendered photo card
+function updatePhotoCardGPS(id, gps){
+  const card = document.getElementById('pcard-'+id);
+  if(!card || !gps || !gps.lat) return;
+  const lat = parseFloat(gps.lat).toFixed(6);
+  const lng = parseFloat(gps.lng).toFixed(6);
+  const accText = (gps.acc != null) ? ` ±${Math.round(gps.acc)}m` : '';
+  const mapsUrl = `https://maps.apple.com/?ll=${lat},${lng}&z=18&t=h`;
+  // Remove any existing GPS element first
+  const existing = card.querySelector('.photo-gps-link');
+  if(existing) existing.remove();
+  // Insert after the timestamp line
+  const tsLine = card.querySelector('.photo-ts');
+  if(!tsLine) return;
+  const a = document.createElement('a');
+  a.className = 'photo-gps-link';
+  a.href = mapsUrl;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.title = 'Open in Maps';
+  a.style.cssText = 'display:block;font-size:10px;color:#4db8ff;font-family:"DM Mono",monospace;' +
+    'text-decoration:none;margin-bottom:4px;line-height:1.5;word-break:break-all;' +
+    'background:rgba(52,152,219,.12);border-radius:4px;padding:2px 5px;';
+  a.textContent = `📍 ${lat}, ${lng}${accText}`;
+  tsLine.insertAdjacentElement('afterend', a);
 }
 
 // ── GALLERY PHOTO: extract EXIF GPS + date from each file ──
@@ -1411,21 +1460,20 @@ async function handleGalleryPhotos(files){
 
     try {
       if(typeof exifr !== 'undefined'){
-        const exif = await exifr.parse(f, {
-          pick: ['GPSLatitude','GPSLongitude','GPSLatitudeRef','GPSLongitudeRef','DateTimeOriginal','CreateDate']
-        });
+        // exifr full build — parse all GPS + date tags
+        const exif = await exifr.parse(f, { gps: true, tiff: true, exif: true });
         if(exif){
-          // GPS from EXIF
+          // exifr returns latitude/longitude as decimal degrees (negative = S/W)
           if(exif.latitude != null && exif.longitude != null){
             photoGps = {
-              lat: parseFloat(exif.latitude).toFixed(6),
-              lng: parseFloat(exif.longitude).toFixed(6),
-              acc: null   // EXIF GPS has no accuracy figure
+              lat: exif.latitude.toFixed(6),
+              lng: exif.longitude.toFixed(6),
+              acc: null
             };
           }
-          // Date from EXIF (DateTimeOriginal is when the shutter fired)
-          const exifDate = exif.DateTimeOriginal || exif.CreateDate;
-          if(exifDate instanceof Date && !isNaN(exifDate)){
+          // Use shutter-fired timestamp if available
+          const exifDate = exif.DateTimeOriginal || exif.CreateDate || exif.DateTime;
+          if(exifDate instanceof Date && !isNaN(exifDate.getTime())){
             timestamp = exifDate.toLocaleString('en-US', {
               month:'short', day:'2-digit', year:'numeric',
               hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true
@@ -1433,7 +1481,7 @@ async function handleGalleryPhotos(files){
           }
         }
       }
-    } catch(e){ /* EXIF read failed — use current time, no GPS */ }
+    } catch(e){ console.warn('EXIF read failed:', e); }
 
     // Read image data
     await new Promise(resolve => {
@@ -1460,14 +1508,15 @@ function renderPhotoCard(id, dataUrl, timestamp, gps){
   card.className = 'photo-card';
   card.id = 'pcard-'+id;
 
-  // GPS link — only rendered when coordinates are available
+  // GPS link — rendered immediately if coords already known, otherwise injected later by updatePhotoCardGPS
   let gpsLine = '';
   if(gps && gps.lat && gps.lng){
     const lat = parseFloat(gps.lat).toFixed(6);
     const lng = parseFloat(gps.lng).toFixed(6);
     const accText = (gps.acc != null) ? ` ±${Math.round(gps.acc)}m` : '';
     const mapsUrl = `https://maps.apple.com/?ll=${lat},${lng}&z=18&t=h`;
-    gpsLine = `<a href="${mapsUrl}" target="_blank" rel="noopener"
+    gpsLine = `<a class="photo-gps-link" href="${mapsUrl}" target="_blank" rel="noopener"
+      title="Open in Maps"
       style="display:block;font-size:10px;color:#4db8ff;font-family:'DM Mono',monospace;
              text-decoration:none;margin-bottom:4px;line-height:1.5;word-break:break-all;
              background:rgba(52,152,219,.12);border-radius:4px;padding:2px 5px;">
@@ -1479,7 +1528,7 @@ function renderPhotoCard(id, dataUrl, timestamp, gps){
     <div class="ai-done-badge" id="aibadge-${id}">AI ✓</div>
     <button class="photo-remove" onclick="removePhoto(${id})">×</button>
     <div class="photo-card-body">
-      <div style="font-size:10px;color:var(--mu);margin-bottom:3px;">🕐 ${timestamp||''}</div>
+      <div class="photo-ts" style="font-size:10px;color:var(--mu);margin-bottom:3px;">🕐 ${timestamp||''}</div>
       ${gpsLine}
       <textarea class="photo-caption-input" id="pcap-${id}" placeholder="Tap 🎙 to speak caption, or type..." style="font-size:11px;min-height:40px;background:transparent;border:none;width:100%;color:var(--lt);font-family:'DM Sans',sans-serif;resize:none;outline:none;" oninput="updatePhotoCap(${id},this.value)"></textarea>
     </div>
