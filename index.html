@@ -10,6 +10,8 @@
 <meta name="theme-color" content="#F5C518">
 <!-- exifr full build: reads GPS + date metadata from gallery photos (pure browser, no server) -->
 <script src="https://cdn.jsdelivr.net/npm/exifr@7/dist/full.umd.js"></script>
+<!-- Tesseract.js: on-device OCR for VIN scanning — runs locally, no internet needed after first load -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 :root{--y:#F5C518;--or:#E8631A;--dk:#0F0F0F;--dk2:#1A1A1A;--dk3:#252525;--dk4:#333;--lt:#F2EDE4;--mu:#888;--gr:#2ECC71;--rd:#E74C3C;--bl:#3498DB;}
@@ -272,7 +274,7 @@ textarea{resize:vertical;}
   <div class="sec-title">Configuration</div>
   <div class="g2" style="margin-bottom:10px;">
     <div>
-      <div class="field-label">Secrete Key (Ask Your ABC Specialist)</div>
+      <div class="field-label">Anthropic API Key</div>
       <input type="password" id="apiKey" placeholder="sk-ant-...">
     </div>
     <div>
@@ -941,7 +943,7 @@ function addEquipment(isVehicle, prefillData){
             oninput="updateEq(${id},'vin',this.value.toUpperCase());this.value=this.value.toUpperCase()"
             style="font-family:monospace;letter-spacing:1px;flex:1;min-width:0;">
           <button class="mic-btn" onclick="fieldMic(this,'eq-vin-${id}')" title="Speak VIN">🎙</button>
-          <button class="mic-btn" onclick="scanVinOffline(${id})" title="Scan VIN with camera (offline — uses iOS native text recognition)">📷</button>
+          <button class="mic-btn" onclick="scanVinOffline(${id})" title="Scan VIN with camera — on-device OCR, no internet needed">📷</button>
           <button class="mic-btn" onclick="scanVinAI(${id})" title="Scan VIN with AI (requires internet)">🤖</button>
           <button class="btn btn-ghost btn-sm" onclick="lookupVIN(${id})" title="NHTSA lookup" style="padding:2px 8px;font-size:10px;white-space:nowrap;">🔍 NHTSA</button>
         </div>
@@ -1971,19 +1973,121 @@ function renderReportLogoBar(){
 // choose "Scan Text" from the context menu — fully on-device ML,
 // zero internet needed. We trigger it by focusing the VIN field
 // and showing a short instruction toast. No API call required.
-function scanVinOffline(eqId){
-  const vinEl = document.getElementById('eq-vin-' + eqId);
+// ── OFFLINE: camera photo → Tesseract.js on-device OCR ────────────────
+// Opens rear camera, then runs OCR locally in the browser.
+// No internet required after Tesseract.js script loads (it caches its
+// language model in IndexedDB on first use, so subsequent scans are instant).
+let tesseractWorker = null; // lazy-init, reused across scans
+
+async function scanVinOffline(eqId){
+  const vinEl    = document.getElementById('eq-vin-'   + eqId);
   const statusEl = document.getElementById('eq-nhtsa-' + eqId);
   if(!vinEl) return;
-  // Focus the field — iOS keyboard + Live Text icon appears in toolbar
-  vinEl.focus();
-  vinEl.select();
-  statusEl.style.color = 'var(--bl)';
-  statusEl.textContent = '📷 On iPhone: tap the 📷 icon in the keyboard toolbar, or long-press the field → "Scan Text" to read VIN from camera — no internet needed';
-  // Clear hint after 8 seconds
-  setTimeout(function(){
-    if(statusEl.textContent.startsWith('📷 On iPhone')) statusEl.textContent = '';
-  }, 8000);
+
+  // Open rear camera — same iOS-safe pattern as plate scan
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  input.onchange = async function(){
+    const file = input.files[0];
+    document.body.removeChild(input);
+    if(!file) return;
+
+    statusEl.style.color = 'var(--bl)';
+    statusEl.textContent = '🔍 Reading VIN on device…';
+
+    try {
+      // ── Preprocess: sharpen contrast before OCR ──
+      // Load image into canvas, boost contrast, convert to greyscale
+      const imgUrl = URL.createObjectURL(file);
+      const processed = await preprocessForOCR(imgUrl);
+      URL.revokeObjectURL(imgUrl);
+
+      // ── Init Tesseract worker (reused) ──
+      if(!tesseractWorker){
+        statusEl.textContent = '⏳ Loading OCR engine (one-time, ~2MB)…';
+        tesseractWorker = await Tesseract.createWorker('eng', 1, {
+          // Restrict to VIN character set: A-H J-N P R-Z 0-9
+          // (VINs never contain I, O, Q)
+          tessedit_char_whitelist: 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789',
+          logger: function(){}   // suppress verbose logging
+        });
+        await tesseractWorker.setParameters({
+          tessedit_pageseg_mode: '7',  // treat image as single text line
+          tessedit_char_whitelist: 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789'
+        });
+      }
+
+      statusEl.textContent = '🔍 Scanning VIN characters…';
+      const { data } = await tesseractWorker.recognize(processed);
+
+      // Extract only valid VIN characters and find 17-char sequence
+      const raw = (data.text || '').toUpperCase().replace(/[^ABCDEFGHJKLMNPRSTUVWXYZ0123456789]/g, '');
+      // Try to find a 17-char substring — VINs are always exactly 17 chars
+      let vin = '';
+      if(raw.length >= 17){
+        // Prefer a substring that starts with a letter (VINs always start with a WMI code)
+        const match = raw.match(/[A-HJ-NPR-Z][A-HJ-NPR-Z0-9]{16}/);
+        vin = match ? match[0] : raw.substring(0, 17);
+      }
+
+      if(!vin || vin.length !== 17){
+        statusEl.style.color = 'var(--or)';
+        statusEl.textContent = raw.length > 0
+          ? `⚠ Got "${raw}" — hold camera steady, fill frame with VIN sticker, tap 📷 again`
+          : '⚠ No text found — ensure VIN is in focus and well-lit, tap 📷 again';
+        return;
+      }
+
+      vinEl.value = vin;
+      updateEq(eqId, 'vin', vin);
+      statusEl.style.color = 'var(--gr)';
+      statusEl.textContent = '✓ VIN read: ' + vin + ' — tap 🔍 NHTSA to verify';
+      autosave();
+
+    } catch(err){
+      statusEl.style.color = 'var(--rd)';
+      statusEl.textContent = '⚠ OCR error: ' + err.message;
+      console.error('Tesseract error:', err);
+    }
+  };
+
+  input.click();
+}
+
+// Preprocess image: greyscale + contrast boost → helps Tesseract read VIN plates
+function preprocessForOCR(imgUrl){
+  return new Promise(function(resolve, reject){
+    const img = new Image();
+    img.onload = function(){
+      const MAX = 1800;
+      const scale = img.width > MAX ? MAX / img.width : 1;
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      // Convert to greyscale + boost contrast
+      const id = ctx.getImageData(0, 0, w, h);
+      const d  = id.data;
+      for(let i = 0; i < d.length; i += 4){
+        // Luminance
+        const g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+        // Contrast stretch: push darks darker, lights lighter
+        const c = Math.min(255, Math.max(0, (g - 128) * 1.6 + 128));
+        d[i] = d[i+1] = d[i+2] = c;
+      }
+      ctx.putImageData(id, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = reject;
+    img.src = imgUrl;
+  });
 }
 
 // ── ONLINE: AI vision reads VIN from a camera photo ────
