@@ -700,7 +700,11 @@ const AUTHORIZED_USERS = [
 // ── Hardcoded Anthropic API key ──────────────────────────────
 // Replace the string below with your actual sk-ant-... key.
 // Users will never see or need to enter this.
-const HARDCODED_API_KEY = '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';
+const HARDCODED_API_KEY = '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';
+
+// Declare apiKey HERE — before the auth functions that reference it.
+// 'let' is not hoisted; declaring after doLogin/checkAuth causes a temporal dead zone error.
+let apiKey = HARDCODED_API_KEY;
 
 // ── SHA-256 helper (uses Web Crypto API — no library needed) ──
 async function sha256(str){
@@ -729,13 +733,10 @@ async function doLogin(){
     return;
   }
 
-  // Grant access — hide overlay, show app, set API key
+  // Grant access — hide overlay, show app
   sessionStorage.setItem('sitelog_auth', email);
   document.getElementById('loginOverlay').style.display = 'none';
   document.getElementById('appContent').style.display = '';
-
-  // Set the hardcoded API key so all AI features work immediately
-  apiKey = HARDCODED_API_KEY;
   document.getElementById('noKeyWarn').classList.remove('show');
 
   // Pre-fill email To field from the logged-in user's email (can be overridden)
@@ -755,7 +756,6 @@ function checkAuth(){
   if(stored){
     document.getElementById('loginOverlay').style.display = 'none';
     document.getElementById('appContent').style.display = '';
-    apiKey = HARDCODED_API_KEY;
     document.getElementById('noKeyWarn').classList.remove('show');
     appInit();
   } else {
@@ -767,7 +767,7 @@ function checkAuth(){
 // ═══════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════
-let apiKey = HARDCODED_API_KEY;
+// (apiKey is declared above, right after HARDCODED_API_KEY)
 let emailTo = '';
 let weatherVal = '';
 let inputLang = 'en';
