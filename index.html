@@ -246,9 +246,69 @@ textarea{resize:vertical;}
   .tog-grid{grid-template-columns:1fr;}
   header{padding:12px 16px;}
 }
+
+/* ── LOGIN OVERLAY ── */
+#loginOverlay{
+  position:fixed;inset:0;background:#0F0F0F;z-index:9999;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'DM Sans',sans-serif;
+}
+.login-box{
+  background:#1A1A1A;border:1.5px solid #333;border-radius:16px;
+  padding:40px 36px;width:92%;max-width:380px;
+  box-shadow:0 24px 64px rgba(0,0,0,.6);
+}
+.login-logo{
+  font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:2px;
+  color:#F5C518;margin-bottom:4px;
+}
+.login-logo span{color:#F2EDE4;}
+.login-sub{font-size:12px;color:#888;margin-bottom:28px;letter-spacing:.5px;}
+.login-label{font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:1px;color:#888;margin-bottom:5px;}
+.login-input{
+  width:100%;background:#252525;border:1.5px solid #333;border-radius:8px;
+  color:#F2EDE4;font-family:'DM Sans',sans-serif;font-size:14px;
+  padding:10px 14px;box-sizing:border-box;margin-bottom:14px;outline:none;
+  transition:border-color .2s;
+}
+.login-input:focus{border-color:#F5C518;}
+.login-btn{
+  width:100%;background:#F5C518;color:#0F0F0F;border:none;border-radius:8px;
+  font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;
+  padding:12px;cursor:pointer;margin-top:6px;transition:opacity .15s;
+}
+.login-btn:hover{opacity:.88;}
+.login-err{
+  font-size:12px;color:#E74C3C;margin-top:10px;text-align:center;
+  min-height:16px;
+}
+.login-footer{font-size:11px;color:#555;text-align:center;margin-top:20px;}
 </style>
 </head>
 <body>
+
+<!-- ══════════════════════════════════════════
+     LOGIN OVERLAY — shown until authenticated
+     ══════════════════════════════════════════ -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">SiteLog<span> AI</span></div>
+    <div class="login-sub">AUTHORIZED ACCESS ONLY</div>
+    <div class="login-label">Email Address</div>
+    <input class="login-input" type="email" id="loginEmail" placeholder="your@email.com"
+      onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+    <div class="login-label">Password</div>
+    <input class="login-input" type="password" id="loginPass" placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Sign In →</button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-footer">SiteLog AI · Construction Daily Report<br>Contact your administrator for access.</div>
+  </div>
+</div>
+
+<!-- MAIN APP (hidden until login succeeds) -->
+<div id="appContent" style="display:none;">
 
 <header>
   <div class="logo">SiteLog<span> AI</span></div>
@@ -273,10 +333,6 @@ textarea{resize:vertical;}
 <div class="panel">
   <div class="sec-title">Configuration</div>
   <div class="g2" style="margin-bottom:10px;">
-    <div>
-      <div class="field-label">Secret Key (Ask Your ABC Specialist)</div>
-      <input type="password" id="apiKey" placeholder="sk-ant-...">
-    </div>
     <div>
       <div class="field-label">Email Report To</div>
       <input type="email" id="emailTo" placeholder="engineer@company.com">
@@ -552,6 +608,7 @@ textarea{resize:vertical;}
 </div>
 
 </div><!-- /container -->
+</div><!-- /appContent -->
 
 <!-- CREW TEMPLATE MODAL -->
 <div class="modal-overlay" id="crewTplModal">
@@ -619,9 +676,98 @@ textarea{resize:vertical;}
 
 <script>
 // ═══════════════════════════════════════════════════════
+// AUTH — Hardcoded authorized users
+// Passwords are SHA-256 hashed (hex). To generate a hash:
+//   open browser console → run: sha256('yourpassword')
+//   or use: https://emn178.github.io/online-tools/sha256.html
+// Add/remove users by editing the AUTHORIZED_USERS array below.
+// ═══════════════════════════════════════════════════════
+const AUTHORIZED_USERS = [
+  // { email: 'user@company.com', hash: 'SHA256_HASH_OF_PASSWORD' }
+  // ── ADD YOUR USERS HERE ──────────────────────────────────────
+  // Example (password: "SiteLog2025!"):
+  // { email: 'inspector@acme.com', hash: 'e3b0c44298fc1c149afb...' },
+  //
+  // To generate a hash, open any browser console and run:
+  //   (async()=>{ const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('yourpassword')); console.log([...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('')) })()
+  //
+  // ── EXAMPLE ENTRIES (replace with real emails + hashes) ──────
+  { email: 'Pha.Tran@dot.ca.gov', hash: '053abf5c490bcf8cb1dc83bd2d73df88405df9f17b9a57885f82fdba8911e803' },
+  { email: 'habib.hotaki@dot.ca.gov', hash: '053abf5c490bcf8cb1dc83bd2d73df88405df9f17b9a57885f82fdba8911e803' },
+  { email: 'abc.info@dot.ca.gov',     hash: '053abf5c490bcf8cb1dc83bd2d73df88405df9f17b9a57885f82fdba8911e803' },
+];
+
+// ── Hardcoded Anthropic API key ──────────────────────────────
+// Replace the string below with your actual sk-ant-... key.
+// Users will never see or need to enter this.
+const HARDCODED_API_KEY = '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';
+
+// ── SHA-256 helper (uses Web Crypto API — no library needed) ──
+async function sha256(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// ── Login gate ───────────────────────────────────────────────
+async function doLogin(){
+  const email = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
+  const pass  = (document.getElementById('loginPass').value  || '');
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+
+  if(!email || !pass){
+    errEl.textContent = 'Please enter your email and password.';
+    return;
+  }
+
+  const hash = await sha256(pass);
+  const match = AUTHORIZED_USERS.find(u => u.email.toLowerCase() === email && u.hash === hash);
+
+  if(!match){
+    errEl.textContent = 'Invalid email or password. Contact your administrator.';
+    document.getElementById('loginPass').value = '';
+    return;
+  }
+
+  // Grant access — hide overlay, show app, set API key
+  sessionStorage.setItem('sitelog_auth', email);
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('appContent').style.display = '';
+
+  // Set the hardcoded API key so all AI features work immediately
+  apiKey = HARDCODED_API_KEY;
+  document.getElementById('noKeyWarn').classList.remove('show');
+
+  // Pre-fill email To field from the logged-in user's email (can be overridden)
+  if(!emailTo){
+    emailTo = match.email;
+    const el = document.getElementById('emailTo');
+    if(el) el.value = match.email;
+  }
+
+  // Run normal app init
+  appInit();
+}
+
+// Check if already authenticated (page refresh within same session)
+function checkAuth(){
+  const stored = sessionStorage.getItem('sitelog_auth');
+  if(stored){
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('appContent').style.display = '';
+    apiKey = HARDCODED_API_KEY;
+    document.getElementById('noKeyWarn').classList.remove('show');
+    appInit();
+  } else {
+    // Show login — focus email field
+    setTimeout(()=>{ const el=document.getElementById('loginEmail'); if(el) el.focus(); }, 100);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════
-let apiKey = '';
+let apiKey = HARDCODED_API_KEY;
 let emailTo = '';
 let weatherVal = '';
 let inputLang = 'en';
@@ -638,51 +784,53 @@ let sigData = { Inspector: null, Superintendent: null };
 let reportLogos = { left: null, center: null, right: null };
 
 // ═══════════════════════════════════════════════════════
-// INIT
+// INIT — called after login succeeds
 // ═══════════════════════════════════════════════════════
-const now = new Date();
-document.getElementById('dateBadge').textContent = now.toDateString();
-document.getElementById('reportDate').value = now.toISOString().split('T')[0];
+function appInit(){
+  const now = new Date();
+  document.getElementById('dateBadge').textContent = now.toDateString();
+  document.getElementById('reportDate').value = now.toISOString().split('T')[0];
 
-// Load saved config
-window.addEventListener('DOMContentLoaded', function(){
+  // Load saved config (email only — API key is hardcoded)
   const cfg = JSON.parse(localStorage.getItem('sitelog_config') || '{}');
-  if(cfg.apiKey){ apiKey = cfg.apiKey; document.getElementById('apiKey').value = '••••••••'; }
   if(cfg.emailTo){ emailTo = cfg.emailTo; document.getElementById('emailTo').value = cfg.emailTo; }
-  
+
   const draft = JSON.parse(localStorage.getItem('sitelog_draft') || 'null');
-  if(draft){ 
+  if(draft){
     document.getElementById('savedStatus').textContent = 'Draft saved: ' + new Date(draft.ts).toLocaleString();
     document.getElementById('savedDot').style.background = 'var(--gr)';
   }
-  
+
   const queue = JSON.parse(localStorage.getItem('sitelog_queue') || '[]');
   offlineQueue = queue;
   updateQueueBadge();
-  
-  // Start online monitor
+
+  // Online monitor
   updateOnlineStatus();
   window.addEventListener('online', () => { updateOnlineStatus(); processQueue(); });
   window.addEventListener('offline', updateOnlineStatus);
-  
-  // GPS — try immediately (works on Android); iOS needs user gesture so also wire the badge button
+
+  // GPS
   getGPS();
-  
-  // Default equipment & labor rows
+
+  // Default rows
   addEquipment(false);
   addLabor();
   addLabor();
-  
-  // Setup signature canvases
+
+  // Signature canvases
   setupSig('Inspector');
   setupSig('Superintendent');
-  
+
   // Photo drag/drop
   const dz = document.getElementById('photoDropZone');
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
   dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handlePhotos(e.dataTransfer.files); });
-});
+}
+
+// Kick off auth check on page load
+window.addEventListener('DOMContentLoaded', checkAuth);
 
 // ═══════════════════════════════════════════════════════
 // ONLINE / OFFLINE
@@ -776,14 +924,9 @@ function clearDraft(){
 // CONFIG
 // ═══════════════════════════════════════════════════════
 function saveConfig(){
-  const k = document.getElementById('apiKey').value.trim();
   const e = document.getElementById('emailTo').value.trim();
-  if(k && !k.startsWith('•')) apiKey = k;
   if(e) emailTo = e;
-  localStorage.setItem('sitelog_config', JSON.stringify({ apiKey, emailTo }));
-  document.getElementById('apiKey').value = '';
-  document.getElementById('apiKey').placeholder = '✓ API key saved';
-  document.getElementById('noKeyWarn').classList.remove('show');
+  localStorage.setItem('sitelog_config', JSON.stringify({ emailTo }));
   alert('Configuration saved ✓');
 }
 
